@@ -1,0 +1,8 @@
+[
+{
+  "directory": "C:/Users/camil/OneDrive/Programming/Smart_Glass/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe  @CMakeFiles/Smart_Glass.dir/includes_CXX.rsp -g -o CMakeFiles\\Smart_Glass.dir\\main.cpp.obj -c C:\\Users\\camil\\OneDrive\\Programming\\Smart_Glass\\main.cpp",
+  "file": "C:/Users/camil/OneDrive/Programming/Smart_Glass/main.cpp",
+  "output": "CMakeFiles/Smart_Glass.dir/main.cpp.obj"
+}
+]
