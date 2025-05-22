@@ -1,3 +1,0 @@
-C:/Users/camil/OneDrive/Programming/Smart_Glass/CMakeFiles/Smart_Glass.dir
-C:/Users/camil/OneDrive/Programming/Smart_Glass/CMakeFiles/edit_cache.dir
-C:/Users/camil/OneDrive/Programming/Smart_Glass/CMakeFiles/rebuild_cache.dir
