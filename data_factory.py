@@ -42,7 +42,7 @@ try:
             print("Failed to get frame")
             break
             
-        img, faces = detector.findFaceMesh(img, draw=False)
+        img, faces = detector.findFaceMesh(img, draw=True)
         
         # Check for space key press (manual blink annotation)
         key = cv.waitKey(25) & 0xFF
