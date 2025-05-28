@@ -6,6 +6,18 @@ import cvzone as cvz
 from cvzone.FaceMeshModule import FaceMeshDetector
 from cvzone.PlotModule import LivePlot
 
+import torch
+import numpy as np
+from blink_lstm_model import BlinkLSTMNet
+
+# Load the trained LSTM model
+model = BlinkLSTMNet()
+model.load_state_dict(torch.load("blink_lstm_model.pth", map_location="cpu"))
+model.eval()
+
+SEQ_LEN = 20
+feature_buffer = []
+
 # Initialize the video capture
 cap = cv.VideoCapture(0)
 
@@ -51,15 +63,18 @@ while True:
     
     ratio_avg = sum(ratio_list) / len(ratio_list)
 
-    if ratio_avg > blink_threshold and counter == 0:
-      blink_count += 1
-      counter = 1
-    if counter > 0:
-      counter += 1
-      if counter > 10:
-        counter = 0
-    
-    cv.putText(img, f'Blink Count: {blink_count}', (50, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    features = [ratio, ratio_avg, distance_vertical, distance_horizontal]
+    feature_buffer.append(features)
+    if len(feature_buffer) > SEQ_LEN:
+        feature_buffer.pop(0)
+
+    if len(feature_buffer) == SEQ_LEN:
+        x_seq = np.array(feature_buffer, dtype=np.float32).reshape(1, SEQ_LEN, 4)
+        x_seq = torch.tensor(x_seq)
+        with torch.no_grad():
+            logits = model(x_seq)
+            pred = torch.argmax(logits, dim=1).item()
+        cv.putText(img, f'Model: {"Blink" if pred == 1 else "Not Blink"}', (50, 90), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
     img_plot = plot_y.update(ratio_avg)
     img = cv.resize(img, (640, 360))
