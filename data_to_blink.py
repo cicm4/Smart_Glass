@@ -1,27 +1,17 @@
-#this file is supposed to convert the data of the ratios from the
-#top and bottom eye lid vs the left and right eye lid to create a
-#model that can detect blinks
-import numpy as np
-import pandas as pd
-import cv2 as cv
 import torch
-from torch import nn
-from torch.utils.data import DataLoader
-from torchvision import datasets
-from torchvision.transforms import ToTensor
+from torch.utils.data import Dataset
+import pandas as pd
 
-# Download training data from open datasets.
-training_data = datasets.FashionMNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=ToTensor(),
-)
-
-# Download test data from open datasets.
-test_data = datasets.FashionMNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=ToTensor(),
-)
+class BlinkDataset(Dataset):
+    def __init__(self, csv_file):
+        df = pd.read_csv(csv_file)
+        # Drop rows with missing values (optional)
+        df = df.dropna()
+        # Features: ratio, ratio_avg, distance_vertical, distance_horizontal
+        self.X = df[['ratio', 'ratio_avg', 'distance_vertical', 'distance_horizontal']].values.astype('float32')
+        # Labels: manual_blink (0 or 1)
+        self.y = df['manual_blink'].values.astype('int64')
+    def __len__(self):
+        return len(self.y)
+    def __getitem__(self, idx):
+        return torch.tensor(self.X[idx]), torch.tensor(self.y[idx])
