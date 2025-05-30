@@ -1,150 +1,116 @@
-import os
-import numpy as np
-import pandas as pd
-import time
-import cv2 as cv
-import cvzone as cvz
+import time, cv2 as cv, cvzone as cvz, numpy as np, pandas as pd, keyboard
 from cvzone.FaceMeshModule import FaceMeshDetector
-from cvzone.PlotModule import LivePlot
+from cvzone.PlotModule   import LivePlot
 
-# Initialize the video capture
-cap = cv.VideoCapture(0)
+# --------------- constants ----------------
+PATCH_W, PATCH_H = 24, 12                    # eye‑ROI size to save
+CSV_NAME = f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
 
-# Initialize the FaceMeshDetector
+# MediaPipe landmark ids used for EAR
+L_OUT, L_IN, L_UP, L_LO =  33, 133, 159, 145     # left eye
+R_OUT, R_IN, R_UP, R_LO = 362, 263, 386, 374     # right eye
+POINTS_USED = [L_OUT, L_IN, L_UP, L_LO, R_OUT, R_IN, R_UP, R_LO]
+
+# --------------- helpers ------------------
+def ear(face, out_id, in_id, up_id, lo_id):
+    p_out = face[out_id];  p_in = face[in_id]
+    p_up  = face[up_id];   p_lo = face[lo_id]
+    ver, _ = detector.findDistance(p_up,  p_lo)
+    hor, _ = detector.findDistance(p_out, p_in)
+    return (ver / hor) * 10, ver, hor
+
+def eye_patch(img, pts):
+    x, y, w, h = cv.boundingRect(pts)
+    patch = cv.cvtColor(img[y:y+h, x:x+w], cv.COLOR_BGR2GRAY)
+    if patch.size == 0:                                  # safety
+        return np.zeros((PATCH_H, PATCH_W), np.uint8)
+    return cv.resize(patch, (PATCH_W, PATCH_H), cv.INTER_AREA)
+
+# --------------- init ---------------------
+cap      = cv.VideoCapture(0)
 detector = FaceMeshDetector(maxFaces=1)
+plot     = LivePlot(640, 360, [1, 4])         # ratio plot
 
-plot_y = LivePlot(640, 360, [20, 40],)
-
-# List of eye landmarks
-eye_id_list = [22, 23, 24, 26, 110, 157, 158, 159, 160, 161, 130, 243]
-ratio_list = []
-counter = 0
-
-# Create a list to store all data points
-data_records = []
-timestamp_start = time.time()
-
-# CSV file configuration
-csv_filename = f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
-
+data_rows   = []
 blink_count = 0
-blink_threshold = 32  # Threshold for blink detection
-
-# Add manual blink annotation variables
-manual_blink = False
-blink_timestamp = 0
-blink_display_time = 1.0  # How long to show "BLINK" on screen (seconds)
+t0          = time.time()
 
 try:
     while True:
-        success, img = cap.read()
-        if not success:
-            print("Failed to get frame")
+        ok, img = cap.read()
+        if not ok:
             break
-            
-        img, faces = detector.findFaceMesh(img, draw=True)
-        
-        # Check for space key press (manual blink annotation)
-        key = cv.waitKey(25) & 0xFF
-        if key == 32:  # 32 is the space key
-            manual_blink = True
-            blink_timestamp = time.time()
-            blink_count += 1
-            print("Manual blink annotated!")
-        
-        # Check if blink display time has passed
-        if manual_blink and (time.time() - blink_timestamp > blink_display_time):
-            manual_blink = False
+        img, faces = detector.findFaceMesh(img, draw=False)
 
-        current_time = time.time() - timestamp_start
+        # MANUAL blink state = whether SPACE is held
+        manual_blink = keyboard.is_pressed('space')
+        if manual_blink and (not blink_count or data_rows[-1]['manual_blink'] == 0):
+            blink_count += 1                  # increment on first frame of a new press
+
+        timestamp = time.time() - t0
 
         if faces:
             face = faces[0]
-            timestamp = current_time
 
-            for id in eye_id_list:
-                cv.circle(img, face[id], 5, (255, 0, 255), cv.FILLED)
-            
-            left_up = face[159]
-            left_down = face[23]
-            left_left = face[130]
-            left_right = face[243]
+            # draw landmarks used
+            for pid in POINTS_USED:
+                cv.circle(img, face[pid], 4, (255, 0, 255), cv.FILLED)
 
-            distance_horizontal, _ = detector.findDistance(left_up, left_down)
-            distance_vertical, _ = detector.findDistance(left_left, left_right)
+            # ratio for left / right
+            ratio_L, vL, hL = ear(face, L_OUT, L_IN, L_UP, L_LO)
+            ratio_R, vR, hR = ear(face, R_OUT, R_IN, R_UP, R_LO)
+            ratio_avg       = (ratio_L + ratio_R) / 2
 
-            cv.line(img, left_up, left_down, (0, 200, 0), 3)
-            cv.line(img, left_left, left_right, (0, 200, 0), 3)
-            
-            ratio = (distance_vertical/distance_horizontal) * 10
-            ratio_list.append(ratio)
-            if len(ratio_list) > 3:
-                ratio_list.pop(0)
-            
-            ratio_avg = sum(ratio_list) / len(ratio_list)
-            
-            # Store data for this frame
-            data_records.append({
-                'timestamp': timestamp,
-                'ratio': ratio,
-                'ratio_avg': ratio_avg,
-                'distance_vertical': distance_vertical,
-                'distance_horizontal': distance_horizontal,
-                'blink_count': blink_count,
-                'manual_blink': 1 if manual_blink else 0  # Add manual blink status (1 or 0)
-            })
-            
-            cv.putText(img, f'Blink Count: {blink_count}', (50, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv.putText(img, f'Ratio: {ratio:.2f}', (50, 90), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv.putText(img, f'Avg Ratio: {ratio_avg:.2f}', (50, 130), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            
-            # Display BLINK annotation when active
+            # left‑eye patch pixels
+            pts_left = np.array([face[id] for id in [L_OUT, L_IN, L_UP, L_LO]], np.int32)
+            patch    = eye_patch(img, pts_left)          # (H,W) greyscale
+            pixels   = patch.flatten().tolist()          # 288 ints
+
+            # HUD
+            cv.putText(img, f'Blink #: {blink_count}',  (20,35),
+                       cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            cv.putText(img, f'EAR L/R: {ratio_L:.2f}/{ratio_R:.2f}',
+                       (20,65), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
             if manual_blink:
-                cv.putText(img, "BLINK ANNOTATED", (50, 200), cv.FONT_HERSHEY_SIMPLEX, 
-                           1.5, (0, 0, 255), 3)
+                cv.putText(img, 'BLINK (SPACE held)', (20,95),
+                           cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
 
-            img_plot = plot_y.update(ratio_avg)
-            img = cv.resize(img, (640, 360))
-            img_stack = cvz.stackImages([img, img_plot], 2, 1)
-            cv.imshow("Image", img_stack)
+            # plot & show
+            plot_img   = plot.update(ratio_avg)
+            show_stack = cvz.stackImages([cv.resize(img,(640,360)), plot_img], 2, 1)
+            cv.imshow("Blink Recorder", show_stack)
+
+            # ---------- record row ----------
+            row = dict(
+                timestamp   = timestamp,
+                ratio_left  = ratio_L,
+                ratio_right = ratio_R,
+                ratio_avg   = ratio_avg,
+                v_left      = vL,
+                h_left      = hL,
+                v_right     = vR,
+                h_right     = hR,
+                blink_count = blink_count,
+                manual_blink= int(manual_blink)
+            )
+            row.update({f'px_{i}': pix for i, pix in enumerate(pixels)})
+            data_rows.append(row)
+
         else:
-            # Even if no face is detected, still record blink data
-            data_records.append({
-                'timestamp': current_time,
-                'ratio': None,
-                'ratio_avg': None,
-                'distance_vertical': None,
-                'distance_horizontal': None,
-                'blink_count': blink_count,
-                'manual_blink': 1 if manual_blink else 0
-            })
-            
-            img = cv.resize(img, (640, 360))
-            # Display BLINK annotation when active
-            if manual_blink:
-                cv.putText(img, "BLINK ANNOTATED", (50, 200), cv.FONT_HERSHEY_SIMPLEX, 
-                           1.5, (0, 0, 255), 3)
-            cv.imshow("Image", img)
+            # still write a row to keep timeline (pixels = NaNs)
+            data_rows.append(dict(timestamp=timestamp,
+                                  ratio_left=None, ratio_right=None, ratio_avg=None,
+                                  v_left=None, h_left=None, v_right=None, h_right=None,
+                                  blink_count=blink_count, manual_blink=int(manual_blink),
+                                  **{f'px_{i}': None for i in range(PATCH_W*PATCH_H)}))
+            cv.imshow("Blink Recorder", cv.resize(img,(640,360)))
 
-        # Instructions
-        instructions = np.zeros((100, 640, 3), dtype=np.uint8)
-        cv.putText(instructions, "Press SPACE to annotate a blink", (20, 30), 
-                  cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv.putText(instructions, "Press Q to quit and save data", (20, 70), 
-                  cv.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv.imshow("Instructions", instructions)
-
-        # End the loop if 'q' is pressed
-        if key == ord('q'):
+        if cv.waitKey(1) & 0xFF == ord('q'):
             break
 
 finally:
-    # Save all collected data to CSV
-    if data_records:
-        print(f"Saving data to {csv_filename}...")
-        df = pd.DataFrame(data_records)
-        df.to_csv(csv_filename, index=False)
-        print(f"Data saved: {len(data_records)} records")
-    
+    if data_rows:
+        pd.DataFrame(data_rows).to_csv(CSV_NAME, index=False)
+        print(f"Saved {len(data_rows)} rows → {CSV_NAME}")
     cap.release()
     cv.destroyAllWindows()
