@@ -1,92 +1,128 @@
-# Video Blink Detection Test
-# The objective of this test is to verify if the video blink detection works correctly.
-
-import cv2 as cv
-import cvzone as cvz
+# Video Blink Detection Test – NEW INPUT PIPELINE for BlinkDetector
+# ---------------------------------------------------------------
+import time, cv2 as cv, cvzone as cvz, numpy as np, torch
 from cvzone.FaceMeshModule import FaceMeshDetector
-from cvzone.PlotModule import LivePlot
+from cvzone.PlotModule   import LivePlot
+from model import BlinkDetector           # ← model class
 
-import torch
-import numpy as np
-from blink_lstm_model import BlinkLSTMNet
+# ───────── configuration ──────────────────────────────────────
+SEQ_LEN          = 30
+PATCH_W, PATCH_H = 24, 12
+THRESH           = 0.50                         # p(blink) threshold
+DEVICE           = "cuda" if torch.cuda.is_available() else "cpu"
+MODEL_WEIGHTS    = "blink_best.pth"
+STATS_NPZ        = "blink_stats.npz"            # mean & std saved at training
+# MediaPipe landmark IDs (same as data-collection script)
+L_OUT,L_IN,L_UP,L_LO =  33,133,159,145
+R_OUT,R_IN,R_UP,R_LO = 362,263,386,374
+POINTS_USED = [L_OUT,L_IN,L_UP,L_LO,R_OUT,R_IN,R_UP,R_LO]
+# ──────────────────────────────────────────────────────────────
 
-# Load the trained LSTM model
-model = BlinkLSTMNet()
-model.load_state_dict(torch.load("blink_lstm_model.pth", map_location="cpu"))
-model.eval()
+# ---------- helper functions (copied from collector) ----------
+def ear(face, out_id, in_id, up_id, lo_id, det):
+    p_out, p_in = face[out_id], face[in_id]
+    p_up,  p_lo = face[up_id],  face[lo_id]
+    ver,_ = det.findDistance(p_up, p_lo)
+    hor,_ = det.findDistance(p_out, p_in)
+    return (ver / hor) * 10, ver, hor
 
-SEQ_LEN = 20
-feature_buffer = []
+def eye_patch(img, pts):
+    x,y,w,h = cv.boundingRect(pts)
+    patch   = cv.cvtColor(img[y:y+h, x:x+w], cv.COLOR_BGR2GRAY)
+    if patch.size == 0:
+        return np.zeros((PATCH_H, PATCH_W), np.uint8)
+    return cv.resize(patch, (PATCH_W, PATCH_H), cv.INTER_AREA)
+# --------------------------------------------------------------
 
-# Initialize the video capture
-cap = cv.VideoCapture(0)
+# ---------- load model & feature stats ------------------------
+model = BlinkDetector().to(DEVICE).eval()
+model.load_state_dict(torch.load(MODEL_WEIGHTS, map_location=DEVICE))
 
-# Initialize the FaceMeshDetector
+stats   = np.load(STATS_NPZ)
+MEAN, STD = stats["mean"], stats["std"]          # (7,) each
+# --------------------------------------------------------------
+
+# ---------- runtime buffers -----------------------------------
+eye_buf, num_buf = [], []        # hold 30 frames
+blink_count      = 0
+prev_pred        = 0
+# --------------------------------------------------------------
+
+# ---------- OpenCV / MediaPipe init ---------------------------
+cap      = cv.VideoCapture(0)
 detector = FaceMeshDetector(maxFaces=1)
+plot_y   = LivePlot(640, 360, [1,4])
+t0       = time.time()
+# --------------------------------------------------------------
 
-plot_y = LivePlot(640, 360, [20, 40],)
-
-#list of eye landmarks
-eye_id_list = [22, 23, 24, 26, 110, 157, 158, 159, 160, 161, 130, 243]
-ratio_list = []
-counter = 0
-
-blink_count = 0
-blink_threshold = 32  # Threshold for blink detection
 while True:
+    ok, img = cap.read()
+    if not ok:
+        break
 
-  success, img = cap.read()
-  img, faces = detector.findFaceMesh(img, draw=False)
+    img, faces = detector.findFaceMesh(img, draw=False)
+    timestamp = time.time() - t0
 
-  if faces:
-    face = faces[0]
+    if faces:
+        face = faces[0]
 
-    for id in eye_id_list:
-      cv.circle(img, face[id], 5, (255, 0, 255), cv.FILLED)
-    
-    left_up = face[159]
-    left_down = face[23]
+        # draw landmarks (optional)
+        for pid in POINTS_USED:
+            cv.circle(img, face[pid], 3, (255,0,255), cv.FILLED)
 
-    left_left = face[130]
-    left_right = face[243]
+        # ── numeric features
+        ratio_L,vL,hL = ear(face, L_OUT,L_IN,L_UP,L_LO, detector)
+        ratio_R,vR,hR = ear(face, R_OUT,R_IN,R_UP,R_LO, detector)
+        ratio_avg     = (ratio_L + ratio_R) / 2
+        num_feats = np.array([ratio_L,ratio_R,ratio_avg,
+                              vL,hL,vR,hR], dtype=np.float32)
 
-    distance_horizontal,_ = detector.findDistance(left_up, left_down)
-    distance_vertical,_ = detector.findDistance(left_left, left_right)
+        # ── eye patch (left eye)
+        pts_left = np.array([face[id] for id in [L_OUT,L_IN,L_UP,L_LO]], np.int32)
+        patch    = patch = eye_patch(img, pts_left).T.astype(np.float32) / 255.0  # (24,12) ← matches training
 
-    cv.line(img, left_up, left_down, (0, 200, 0), 3)
-    cv.line(img, left_left, left_right, (0, 200, 0), 3)
-    
-    ratio = (distance_vertical/distance_horizontal) * 10
-    ratio_list.append(ratio)
-    if len(ratio_list) > 3:
-      ratio_list.pop(0)
-    
-    ratio_avg = sum(ratio_list) / len(ratio_list)
+        # add to buffers
+        eye_buf.append(patch[None])     # (1,24,12)
+        num_buf.append(num_feats)
+        if len(eye_buf) > SEQ_LEN: eye_buf.pop(0)
+        if len(num_buf) > SEQ_LEN: num_buf.pop(0)
 
-    features = [ratio, ratio_avg, distance_vertical, distance_horizontal]
-    feature_buffer.append(features)
-    if len(feature_buffer) > SEQ_LEN:
-        feature_buffer.pop(0)
+        # run model when window full
+        if len(eye_buf) == SEQ_LEN:
+            eye_arr = np.stack(eye_buf)                          # (30,1,24,12)
+            num_arr = (np.stack(num_buf) - MEAN) / STD           # z-score
 
-    if len(feature_buffer) == SEQ_LEN:
-        x_seq = np.array(feature_buffer, dtype=np.float32).reshape(1, SEQ_LEN, 4)
-        x_seq = torch.tensor(x_seq)
-        with torch.no_grad():
-            logits = model(x_seq)
-            pred = torch.argmax(logits, dim=1).item()
-        cv.putText(img, f'Model: {"Blink" if pred == 1 else "Not Blink"}', (50, 90), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            eye_t = torch.from_numpy(eye_arr)[None].to(DEVICE)   # (1,30,1,24,12)
+            num_t = torch.from_numpy(num_arr)[None].to(DEVICE)   # (1,30,7)
 
-    img_plot = plot_y.update(ratio_avg)
-    img = cv.resize(img, (640, 360))
-    img_stack = cvz.stackImages([img, img_plot], 2, 1)
-    cv.imshow("Image", img_stack)
-  else:
-    img = cv.resize(img, (640, 360))
-    cv.imshow("Image", img)
+            with torch.no_grad():
+                p = torch.sigmoid(model(eye_t, num_t)).item()
 
-  #end the loop if 'q' is pressed
-  if cv.waitKey(25) & 0xFF == ord('q'):
-    break
+            pred = int(p > THRESH)
+            if pred == 1 and prev_pred == 0:      # count rising edge
+                blink_count += 1
+            prev_pred = pred
+
+            cv.putText(img, f'Model: {"Blink" if pred else "No blink"}  p={p:.2f}',
+                       (20,95), cv.FONT_HERSHEY_SIMPLEX, 0.7,
+                       (0,0,255) if pred else (0,255,0), 2)
+
+        # HUD
+        cv.putText(img, f'Blink #: {blink_count}', (20,35),
+                   cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+        cv.putText(img, f'EAR L/R: {ratio_L:.2f}/{ratio_R:.2f}', (20,65),
+                   cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+
+        # plot & show
+        img_plot  = plot_y.update(ratio_avg)
+        img       = cv.resize(img, (640,360))
+        img_stack = cvz.stackImages([img, img_plot], 2, 1)
+        cv.imshow("BlinkDetector", img_stack)
+    else:
+        cv.imshow("BlinkDetector", cv.resize(img,(640,360)))
+
+    if cv.waitKey(1) & 0xFF == ord('q'):
+        break
 
 cap.release()
-cv.destroyAllWindows()  
+cv.destroyAllWindows()

@@ -7,7 +7,7 @@ from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import torch.nn as nn
 import torch.amp as amp
 
-CSV_PATH = r"C:/Users/camil/OneDrive/Programming/Smart_Glass/dev/blink_data_20250601_111846.csv"
+CSV_PATH = r"C:/Users/camil/OneDrive/Programming/Smart_Glass/dev/blink_data.csv"
 
 import os, sys
 if not os.path.exists(CSV_PATH):
@@ -15,7 +15,8 @@ if not os.path.exists(CSV_PATH):
 
 
 SEQ_LEN    = 30
-BATCH_SIZE = 256
+BATCH_SIZE = 1024
+CURR_BEST_F1 = .114
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.backends.cudnn.benchmark = device == "cuda"
@@ -133,7 +134,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="min", factor=0.5, patience=3
 )
 
-scaler = amp.GradScaler('cuda')
+scaler = amp.GradScaler(device)
 
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
@@ -144,7 +145,7 @@ def run_epoch(loader, train=True):
         num = num.to(device, non_blocking=pin).float()
         lbl = lbl.to(device, non_blocking=pin).float()
 
-        with amp.autocast('cuda'):
+        with amp.autocast(device):
             logits = model(eye, num)
             loss   = criterion(logits, lbl)
 
@@ -178,10 +179,14 @@ for epoch in range(100):
     print(f"[{epoch+1:02}] trainL {tr_loss:.4f}  F1 {tr_f1:.3f} | "
           f"valL {va_loss:.4f}  F1 {va_f1:.3f}")
 
-    if va_f1 > best_f1 + 0.001:
+    if va_f1 > best_f1 + 0.001 and va_f1 > CURR_BEST_F1:
         best_f1 = va_f1
         no_improve = 0
         torch.save(model.state_dict(), "blink_best.pth")
+        # save mean & std for inference
+        np.savez("blink_stats.npz", mean=train_ds.numeric_stats[0], std =train_ds.numeric_stats[1])
+        print("Saved blink_stats.npz")
+
     else:
         no_improve += 1
         if no_improve >= patience:
