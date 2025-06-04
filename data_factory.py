@@ -1,28 +1,36 @@
 import time, cv2 as cv, cvzone as cvz, numpy as np, pandas as pd, keyboard
 from cvzone.FaceMeshModule import FaceMeshDetector
-from cvzone.PlotModule   import LivePlot
+from cvzone.PlotModule import LivePlot
 
 # --------------- constants ----------------
 PATCH_W, PATCH_H = 24, 12                    # eye‑ROI size to save
 CSV_NAME = f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
 
 # MediaPipe landmark ids used for EAR
-L_OUT, L_IN, L_UP, L_LO =  33, 133, 159, 145     # left eye
-R_OUT, R_IN, R_UP, R_LO = 362, 263, 386, 374     # right eye
+L_OUT, L_IN, L_UP, L_LO = 33, 133, 159, 145     # left eye
+R_OUT, R_IN, R_UP, R_LO = 362, 263, 386, 374    # right eye
 POINTS_USED = [L_OUT, L_IN, L_UP, L_LO, R_OUT, R_IN, R_UP, R_LO]
 
+# Label‑window padding (frames) ---------
+BLINK_PRE_FRAMES  = 3   # frames before key‑press set to 1
+BLINK_POST_FRAMES = 6   # frames after key‑press set to 1
+
 # --------------- helpers ------------------
+
 def ear(face, out_id, in_id, up_id, lo_id):
+    """Eye‑aspect ratio for a single eye; returns ratio×10, vertical dist, horizontal dist."""
     p_out = face[out_id];  p_in = face[in_id]
     p_up  = face[up_id];   p_lo = face[lo_id]
     ver, _ = detector.findDistance(p_up,  p_lo)
     hor, _ = detector.findDistance(p_out, p_in)
     return (ver / hor) * 10, ver, hor
 
+
 def eye_patch(img, pts):
+    """Return PATCH_H×PATCH_W greyscale crop around the given polygon of eye landmarks."""
     x, y, w, h = cv.boundingRect(pts)
     patch = cv.cvtColor(img[y:y+h, x:x+w], cv.COLOR_BGR2GRAY)
-    if patch.size == 0:                                  # safety
+    if patch.size == 0:                                  # safety for empty crops
         return np.zeros((PATCH_H, PATCH_W), np.uint8)
     return cv.resize(patch, (PATCH_W, PATCH_H), cv.INTER_AREA)
 
@@ -31,21 +39,37 @@ cap      = cv.VideoCapture(0)
 detector = FaceMeshDetector(maxFaces=1)
 plot     = LivePlot(640, 360, [1, 4])         # ratio plot
 
-data_rows   = []
-blink_count = 0
-t0          = time.time()
+data_rows      = []
+blink_count    = 0
+blink_post_ctr = 0
+prev_keypress  = False
+t0             = time.time()
 
 try:
     while True:
         ok, img = cap.read()
         if not ok:
             break
-        img, faces = detector.findFaceMesh(img, draw=False)
 
-        # MANUAL blink state = whether SPACE is held
-        manual_blink = keyboard.is_pressed('space')
-        if manual_blink and (not blink_count or data_rows[-1]['manual_blink'] == 0):
-            blink_count += 1                  # increment on first frame of a new press
+        img, faces = detector.findFaceMesh(img, draw=False)
+        keypress_now = keyboard.is_pressed('space')
+
+        # -------- blink edge detection --------
+        if keypress_now and not prev_keypress:      # rising edge
+            blink_count   += 1
+            blink_post_ctr = BLINK_POST_FRAMES
+
+            # retroactively label previous frames
+            for i in range(1, BLINK_PRE_FRAMES + 1):
+                if len(data_rows) >= i:
+                    data_rows[-i]['manual_blink'] = 1
+
+        # decide label for this frame
+        manual_blink = int(keypress_now or blink_post_ctr > 0)
+
+        # countdown post window
+        if blink_post_ctr:
+            blink_post_ctr -= 1
 
         timestamp = time.time() - t0
 
@@ -72,7 +96,7 @@ try:
             cv.putText(img, f'EAR L/R: {ratio_L:.2f}/{ratio_R:.2f}',
                        (20,65), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
             if manual_blink:
-                cv.putText(img, 'BLINK (SPACE held)', (20,95),
+                cv.putText(img, 'BLINK (label=1)', (20,95),
                            cv.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 2)
 
             # plot & show
@@ -91,7 +115,7 @@ try:
                 v_right     = vR,
                 h_right     = hR,
                 blink_count = blink_count,
-                manual_blink= int(manual_blink)
+                manual_blink= manual_blink
             )
             row.update({f'px_{i}': pix for i, pix in enumerate(pixels)})
             data_rows.append(row)
@@ -101,12 +125,14 @@ try:
             data_rows.append(dict(timestamp=timestamp,
                                   ratio_left=None, ratio_right=None, ratio_avg=None,
                                   v_left=None, h_left=None, v_right=None, h_right=None,
-                                  blink_count=blink_count, manual_blink=int(manual_blink),
+                                  blink_count=blink_count, manual_blink=manual_blink,
                                   **{f'px_{i}': None for i in range(PATCH_W*PATCH_H)}))
             cv.imshow("Blink Recorder", cv.resize(img,(640,360)))
 
         if cv.waitKey(1) & 0xFF == ord('q'):
             break
+
+        prev_keypress = keypress_now
 
 finally:
     if data_rows:

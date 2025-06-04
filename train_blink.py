@@ -14,9 +14,9 @@ if not os.path.exists(CSV_PATH):
     sys.exit(f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n")
 
 
-SEQ_LEN    = 30
-BATCH_SIZE = 1024
-CURR_BEST_F1 = .114
+SEQ_LEN    = 50
+BATCH_SIZE = 2048
+CURR_BEST_F1 = 0
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.backends.cudnn.benchmark = device == "cuda"
@@ -33,8 +33,8 @@ class BlinkSeqDataset(Dataset):
     NUM_COLS = ['ratio_left', 'ratio_right', 'ratio_avg',
                 'v_left', 'h_left', 'v_right', 'h_right']
 
-    def __init__(self, csv_path, seq_len=30, train=True,
-                 split_ratio=0.8, numeric_stats=None):
+    def __init__(self, csv_path, seq_len=50, train=True,
+                 split_ratio=0.6, numeric_stats=None):
         df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
         df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
 
