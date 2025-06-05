@@ -5,7 +5,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import torch.nn as nn
-import torch.amp as amp
+import torch.cuda.amp as amp
 
 CSV_PATH = r"C:/Users/camil/OneDrive/Programming/Smart_Glass/dev/blink_data.csv"
 
@@ -134,7 +134,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     optimizer, mode="min", factor=0.5, patience=3
 )
 
-scaler = amp.GradScaler(device)
+scaler = amp.GradScaler()
 
 def run_epoch(loader, train=True):
     model.train() if train else model.eval()
@@ -145,7 +145,7 @@ def run_epoch(loader, train=True):
         num = num.to(device, non_blocking=pin).float()
         lbl = lbl.to(device, non_blocking=pin).float()
 
-        with amp.autocast(device):
+        with amp.autocast(enabled=(device == "cuda")):
             logits = model(eye, num)
             loss   = criterion(logits, lbl)
 

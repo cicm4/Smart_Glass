@@ -31,7 +31,7 @@ def eye_patch(img, pts):
     patch   = cv.cvtColor(img[y:y+h, x:x+w], cv.COLOR_BGR2GRAY)
     if patch.size == 0:
         return np.zeros((PATCH_H, PATCH_W), np.uint8)
-    return cv.resize(patch, (PATCH_W, PATCH_H), cv.INTER_AREA)
+    return cv.resize(patch, (PATCH_W, PATCH_H), interpolation=cv.INTER_AREA)
 # --------------------------------------------------------------
 
 # ---------- load model & feature stats ------------------------
