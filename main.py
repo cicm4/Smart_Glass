@@ -3,19 +3,11 @@
 import time, cv2 as cv, cvzone as cvz, numpy as np, torch
 from cvzone.FaceMeshModule import FaceMeshDetector
 from cvzone.PlotModule   import LivePlot
-from model import BlinkDetector           # ← model class
+from Model.model import BlinkModelMed as model
 
 # ───────── configuration ──────────────────────────────────────
-SEQ_LEN          = 30
-PATCH_W, PATCH_H = 24, 12
-THRESH           = 0.50                         # p(blink) threshold
-DEVICE           = "cuda" if torch.cuda.is_available() else "cpu"
-MODEL_WEIGHTS    = "blink_best.pth"
-STATS_NPZ        = "blink_stats.npz"            # mean & std saved at training
-# MediaPipe landmark IDs (same as data-collection script)
-L_OUT,L_IN,L_UP,L_LO =  33,133,159,145
-R_OUT,R_IN,R_UP,R_LO = 362,263,386,374
-POINTS_USED = [L_OUT,L_IN,L_UP,L_LO,R_OUT,R_IN,R_UP,R_LO]
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 # ──────────────────────────────────────────────────────────────
 
 # ---------- helper functions (copied from collector) ----------

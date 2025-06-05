@@ -1,143 +1,106 @@
-# ---------- BLOCK 0 : imports & globals ---------------------------------
+import os, sys
 import pandas as pd
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 import torch.nn as nn
-import torch.amp as amp
+from torch.utils.data import Dataset, DataLoader
+from torch.amp.autocast_mode import autocast
+from torch.amp.grad_scaler import GradScaler
+from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+from model import BlinkDetectorXS as BlinkDetector
+import constants
 
-CSV_PATH = r"C:/Users/camil/OneDrive/Programming/Smart_Glass/dev/blink_data.csv"
 
-import os, sys
-if not os.path.exists(CSV_PATH):
-    sys.exit(f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n")
-
-
-SEQ_LEN    = 50
-BATCH_SIZE = 2048
-CURR_BEST_F1 = 0
+CSV_PATH   = constants.Training_Constnats.CSV_PATH
+SEQ_LEN    = constants.Training_Constnats.SEQUENCE_LENGTH
+BATCH_SIZE = constants.Training_Constnats.BATCH_SIZE
+CURR_BEST_F1 = constants.Training_Constnats.CURRENT_BEST_F1
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.backends.cudnn.benchmark = device == "cuda"
 print("Device =", device)
-# ------------------------------------------------------------------------
 
-# ---------- BLOCK 1 : Dataset & DataLoaders -----------------------------
+if not os.path.exists(CSV_PATH):
+    sys.exit(f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n")
+
 class BlinkSeqDataset(Dataset):
-    """
-    eye_seq : (seq_len, 1, 24, 12)  float32  [0‑1]
-    num_seq : (seq_len, 7)          float32  (z‑scored)
-    label   : int64 0/1
-    """
-    NUM_COLS = ['ratio_left', 'ratio_right', 'ratio_avg',
-                'v_left', 'h_left', 'v_right', 'h_right']
 
-    def __init__(self, csv_path, seq_len=50, train=True,
-                 split_ratio=0.6, numeric_stats=None):
-        df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
-        df = pd.read_csv(csv_path).dropna().reset_index(drop=True)
+    NUM_COLS = [
+        "ratio_left", "ratio_right", "ratio_avg",
+        "v_left", "h_left", "v_right", "h_right",
+    ]
 
-        print("Columns read from CSV:\n", list(df.columns))   # ← add
-        df.columns = df.columns.str.strip()                   # strip hidden spaces
+    def __init__(self, csv_path: str, seq_len: int = 50, *, train: bool = True,
+                 split_ratio: float = 0.6, numeric_stats=None):
+        # ── read once & clean ────────────────────────────────────────────
+        df = pd.read_csv(csv_path, low_memory=False).dropna().reset_index(drop=True)
+        # Strip accidental whitespace in headers (common source of KeyErrors)
+        df.columns = df.columns.str.strip()
 
+        # ── train / val split ────────────────────────────────────────────
+        split_idx = int(len(df) * split_ratio)
+        df = df.iloc[:split_idx] if train else df.iloc[split_idx:]
 
-        split = int(len(df) * split_ratio)
-        df = df.iloc[:split] if train else df.iloc[split:]
-
+        # ── image patch pixels ───────────────────────────────────────────
         px_cols = [c for c in df.columns if c.startswith("px_")]
-        X_px = (df[px_cols].values.astype(np.float32) / 255.).reshape(-1, 1, 24, 12)
+        X_px = (df[px_cols].values.astype(np.float32) / 255.0).reshape(-1, 1, 24, 12)
 
+        # ── numeric features (EAR etc.) ──────────────────────────────────
         X_num = df[self.NUM_COLS].values.astype(np.float32)
-        if numeric_stats is None:
-            mean, std = X_num.mean(0), X_num.std(0) + 1e-6
+        if numeric_stats is None:  # compute stats from *training* split only
+            mean, std = X_num.mean(axis=0), X_num.std(axis=0) + 1e-6
         else:
             mean, std = numeric_stats
         X_num = (X_num - mean) / std
 
-        self.X_px  = torch.from_numpy(X_px)      # CPU tensors
-        self.X_num = torch.from_numpy(X_num)
-        self.labels = torch.from_numpy(df["manual_blink"].values.astype(np.int64))
-        self.seq_len = seq_len
-        self.numeric_stats = (mean, std)        # expose for test set
+        # ── tensors & bookkeeping ───────────────────────────────────────
+        self.X_px      = torch.from_numpy(X_px)
+        self.X_num     = torch.from_numpy(X_num)
+        self.labels    = torch.from_numpy(df["manual_blink"].values.astype(np.int64))
+        self.seq_len   = seq_len
+        self.stats     = (mean, std)  # expose for val/test
 
+    # ————————————————————————————————————————————
     def __len__(self):
         return len(self.labels) - self.seq_len + 1
 
     def __getitem__(self, idx):
         sl = slice(idx, idx + self.seq_len)
-        return (self.X_px[sl],               # (seq,1,24,12)
-                self.X_num[sl],              # (seq,7)
-                self.labels[idx + self.seq_len - 1])
+        eye_seq = self.X_px[sl]    # (seq,1,24,12)
+        num_seq = self.X_num[sl]   # (seq,7)
+        label   = self.labels[idx + self.seq_len - 1]
+        return eye_seq, num_seq, label
 
+# ── build datasets & loaders ─────────────────────────────────────────────
 train_ds = BlinkSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=True)
-test_ds  = BlinkSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=False,
-                           numeric_stats=train_ds.numeric_stats)
+val_ds   = BlinkSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=False,
+                           numeric_stats=train_ds.stats)
 
 pin = device == "cuda"
-train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE,
-                      shuffle=True,  num_workers=0, pin_memory=pin)
-test_dl  = DataLoader(test_ds,  batch_size=BATCH_SIZE,
-                      shuffle=False, num_workers=0, pin_memory=pin)
-# ------------------------------------------------------------------------
+train_dl = DataLoader(train_ds, batch_size=BATCH_SIZE, shuffle=True,
+                      num_workers=0, pin_memory=pin)
+val_dl   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False,
+                      num_workers=0, pin_memory=pin)
 
-# ---------- BLOCK 2 : Model --------------------------------------------
-class BlinkDetector(nn.Module):
-    def __init__(self, num_features=7, img_height=24, img_width=12,
-                 conv_channels=(16, 32), lstm_hidden=64,
-                 lstm_layers=1, bidirectional=True):
-        super().__init__()
-        self.conv1 = nn.Conv2d(1, conv_channels[0], 3, padding=1)
-        self.conv2 = nn.Conv2d(conv_channels[0], conv_channels[1], 3, padding=1)
-        self.relu  = nn.ReLU(inplace=True)
-        self.pool  = nn.MaxPool2d(2)
+# -------------------------------------------------------------------------
+# ---------- BLOCK 3 : Training setup ------------------------------------
+model = BlinkDetector().to(device)
 
-        conv_out_h = img_height // 4   # 24 -> 6
-        conv_out_w = img_width  // 4   # 12 -> 3
-        flat_dim   = conv_out_h * conv_out_w * conv_channels[1]
-
-        self.img_fc = nn.Linear(flat_dim, 64)
-        self.num_fc = nn.Linear(num_features, 16)
-
-        lstm_in = 64 + 16
-        self.lstm = nn.LSTM(lstm_in, lstm_hidden, lstm_layers,
-                            batch_first=True, bidirectional=bidirectional)
-        out_dim = lstm_hidden * (2 if bidirectional else 1)
-        self.fc = nn.Linear(out_dim, 1)
-
-        self.bidirectional = bidirectional
-
-    def forward(self, eye_seq, num_seq):
-        B, T, C, H, W = eye_seq.shape
-        x = eye_seq.view(B*T, 1, H, W)
-        x = self.pool(self.relu(self.conv1(x)))
-        x = self.pool(self.relu(self.conv2(x)))
-        x = self.relu(self.img_fc(x.view(B*T, -1)))
-
-        n = self.relu(self.num_fc(num_seq.view(B*T, -1)))
-        z = torch.cat([x, n], dim=1).view(B, T, -1)
-
-        _, (h, _) = self.lstm(z)
-        seq_rep = torch.cat([h[-2], h[-1]], dim=1) if self.bidirectional else h[-1]
-        return self.fc(seq_rep).squeeze(1)
-# ------------------------------------------------------------------------
-
-# ---------- BLOCK 3 : Training setup -----------------------------------
-model = BlinkDetector(num_features=7).to(device)
-
+# ░ Address class‑imbalance with pos_weight ░
 blink_frac = train_ds.labels.float().mean().item()
-pos_weight = torch.tensor([(1 - blink_frac) / blink_frac], device=device)
-criterion  = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+pos_weight = torch.tensor([(1.0 - blink_frac) / blink_frac], device=device)
+criterion   = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-optimizer = torch.optim.AdamW(model.parameters(), 1e-3, weight_decay=1e-4)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, mode="min", factor=0.5, patience=3
-)
+optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3, weight_decay=1e-4)
+lr_sched  = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="min",
+                                                     factor=0.5, patience=3)
 
-scaler = amp.GradScaler(device)
+scaler = GradScaler(enabled=(device == "cuda"))
 
-def run_epoch(loader, train=True):
-    model.train() if train else model.eval()
+# -------------------------------------------------------------------------
+# ---------- BLOCK 4 : Train / Val epoch ----------------------------------
+def run_epoch(loader, *, training: bool):
+    model.train() if training else model.eval()
     loss_sum, y_pred_all, y_true_all = 0.0, [], []
 
     for eye, num, lbl in loader:
@@ -145,12 +108,12 @@ def run_epoch(loader, train=True):
         num = num.to(device, non_blocking=pin).float()
         lbl = lbl.to(device, non_blocking=pin).float()
 
-        with amp.autocast(device):
+        with autocast(device_type = device):
             logits = model(eye, num)
             loss   = criterion(logits, lbl)
 
-        if train:
-            optimizer.zero_grad()
+        if training:
+            optimizer.zero_grad(set_to_none=True)
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), 5.0)
@@ -158,7 +121,7 @@ def run_epoch(loader, train=True):
             scaler.update()
 
         loss_sum += loss.item() * lbl.size(0)
-        y_pred_all.append(torch.sigmoid(logits).detach().cpu() > 0.5)
+        y_pred_all.append((torch.sigmoid(logits) > 0.5).detach().cpu())
         y_true_all.append(lbl.cpu().bool())
 
     y_pred = torch.cat(y_pred_all)
@@ -167,45 +130,53 @@ def run_epoch(loader, train=True):
     prec, rec, f1, _ = precision_recall_fscore_support(
         y_true, y_pred, average="binary", zero_division=0)
     return loss_sum / len(loader.dataset), acc, prec, rec, f1
-# ------------------------------------------------------------------------
 
-# ---------- BLOCK 4 : Training loop ------------------------------------
+# -------------------------------------------------------------------------
+# ---------- BLOCK 5 : Training loop -------------------------------------
 best_f1, patience, no_improve = 0.0, 30, 0
-for epoch in range(100):
-    tr_loss, _, _, _, tr_f1 = run_epoch(train_dl, train=True)
-    va_loss, _, _, _, va_f1 = run_epoch(test_dl,  train=False)
-    scheduler.step(va_loss)
+for epoch in range(1, 101):
+    tr_loss, _, _, _, tr_f1 = run_epoch(train_dl, training=True)
+    va_loss, _, _, _, va_f1 = run_epoch(val_dl,   training=False)
+    lr_sched.step(va_loss)
 
-    print(f"[{epoch+1:02}] trainL {tr_loss:.4f}  F1 {tr_f1:.3f} | "
-          f"valL {va_loss:.4f}  F1 {va_f1:.3f}")
+    print(f"[Epoch {epoch:03}] trainL {tr_loss:.4f} F1 {tr_f1:.3f} | "
+          f"valL {va_loss:.4f} F1 {va_f1:.3f}")
 
-    if va_f1 > best_f1 + 0.001 and va_f1 > CURR_BEST_F1:
+    if va_f1 > best_f1 + 1e-3 and va_f1 > CURR_BEST_F1:
         best_f1 = va_f1
         no_improve = 0
         torch.save(model.state_dict(), "blink_best.pth")
-        # save mean & std for inference
-        np.savez("blink_stats.npz", mean=train_ds.numeric_stats[0], std =train_ds.numeric_stats[1])
-        print("Saved blink_stats.npz")
-
+        np.savez("blink_stats.npz", mean=train_ds.stats[0], std=train_ds.stats[1])
+        print("✓ Saved new best model & stats (F1 ↑)")
     else:
         no_improve += 1
         if no_improve >= patience:
-            print("Early stop (no F1 improvement)")
+            print("Early stop – no F1 improvement for", patience, "epochs")
             break
-# ------------------------------------------------------------------------
 
-# ---------- BLOCK 5 : Inference helper ---------------------------------
-model.load_state_dict(torch.load("blink_best.pth", map_location=device))
-model.eval()
+# -------------------------------------------------------------------------
+# ---------- BLOCK 6 : Inference helper ----------------------------------
+# Load best weights (helpful after an early stop during interactive runs)
+if os.path.exists("blink_best.pth"):
+    model.load_state_dict(torch.load("blink_best.pth", map_location=device))
+    model.eval()
 
-def predict_sequence(eye_seq_np, num_seq_np):
+
+def predict_sequence(eye_seq_np: np.ndarray, num_seq_np: np.ndarray) -> float:
+    """Return blink probability for a *single* sequence (no batching).
+
+    Parameters
+    ----------
+    eye_seq_np : ndarray (T,1,24,12) float32 in [0,1]
+    num_seq_np : ndarray (T,7)        float32 *already z‑scored*
     """
-    eye_seq_np : (30,1,24,12) numpy float32  [0‑1]
-    num_seq_np : (30,7)        numpy float32  (z‑scored using train mean/std)
-    """
+    assert eye_seq_np.shape[0] == num_seq_np.shape[0] == SEQ_LEN, "wrong seq len"
+
     eye = torch.from_numpy(eye_seq_np).unsqueeze(0).to(device)
     num = torch.from_numpy(num_seq_np).unsqueeze(0).to(device)
-    with torch.no_grad(), amp.autocast(enabled=(device == "cuda")):
+
+    with torch.no_grad(), autocast(device_type = device):
         prob = torch.sigmoid(model(eye, num)).item()
     return prob
-# ------------------------------------------------------------------------
+
+# -------------------------------------------------------------------------
