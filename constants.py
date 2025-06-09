@@ -1,6 +1,22 @@
+from pathlib import Path
+
+
 MODEL_WEIGHTS = "blink_best.pth"
 STATS_NPZ = "blink_stats.npz"
 BLINKING_THREASHOLD = 0.50
+
+class Paths:
+    ROOT_DIR      = Path(__file__).parent
+    DATA_DIR      = ROOT_DIR / "data"
+    RAW_DATA_DIR  = DATA_DIR / "raw_sessions"
+    DATASET_IMG   = DATA_DIR / "blink_dataset_img.csv"
+    DATASET_NUM   = DATA_DIR / "blink_dataset_num.csv"
+    MODEL_DIR     = ROOT_DIR / "dev" / "models"
+    IMG_WEIGHTS   = MODEL_DIR / "blink_img_best.pth"
+    NUM_WEIGHTS   = MODEL_DIR / "blink_num_best.pth"
+    STATS_DIR     = ROOT_DIR / "dev" / "stats"
+    IMG_STATS_NPZ = STATS_DIR / "blink_img_stats.npz"
+    NUM_STATS_NPZ = STATS_DIR / "blink_num_stats.npz"
 
 
 # Images:
