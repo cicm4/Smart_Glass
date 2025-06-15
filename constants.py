@@ -58,17 +58,12 @@ class Data_Gathering_Constants:
     NUM_COLS = [
         "ratio_left",
         "ratio_right",
-        "ratio_avg",
-        "v_left",
-        "h_left",
-        "v_right",
-        "h_right",
     ]
 
 
 # Constants for different models
 class Model_Constants:
-    NUM_FEATURES = 7
+    NUM_FEATURES = 2
 
     class MEDIUM_MODEL_CONSTANTS:
         CONVOLUTIONAL_IMAGE_CHANELS = (16, 64, 32)
@@ -96,6 +91,13 @@ class Model_Constants:
         LTSM_HIDDEN = 32
         LTSM_LAYERS = 1
         BIDIRECTIONAL = False
+
+    class RATIO_MODEL_CONSTANTS:
+        FC_SIZES = (64, 64, 32)
+        LTSM_INPUT_SIZE = FC_SIZES[-1]
+        LTSM_HIDDEN = 64
+        LTSM_LAYERS = 2
+        BIDIRECTIONAL = True
 
 
 class Training_Constnats:

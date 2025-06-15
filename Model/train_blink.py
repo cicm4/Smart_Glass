@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
-from model import BlinkDetectorXS as BlinkDetector
+from model import BlinkRatioNet as BlinkDetector
 import constants
 
 
@@ -25,10 +25,7 @@ if not os.path.exists(CSV_PATH):
 
 class BlinkSeqDataset(Dataset):
 
-    NUM_COLS = [
-        "ratio_left", "ratio_right", "ratio_avg",
-        "v_left", "h_left", "v_right", "h_right",
-    ]
+    NUM_COLS = constants.Data_Gathering_Constants.NUM_COLS
 
     def __init__(self, csv_path: str, seq_len: int = 50, *, train: bool = True,
                  split_ratio: float = 0.6, numeric_stats=None):
@@ -41,11 +38,7 @@ class BlinkSeqDataset(Dataset):
         split_idx = int(len(df) * split_ratio)
         df = df.iloc[:split_idx] if train else df.iloc[split_idx:]
 
-        # ── image patch pixels ───────────────────────────────────────────
-        px_cols = [c for c in df.columns if c.startswith("px_")]
-        X_px = (df[px_cols].values.astype(np.float32) / 255.0).reshape(-1, 1, 24, 12)
-
-        # ── numeric features (EAR etc.) ──────────────────────────────────
+        # ── numeric features (EAR ratios) ───────────────────────────────
         X_num = df[self.NUM_COLS].values.astype(np.float32)
         if numeric_stats is None:  # compute stats from *training* split only
             mean, std = X_num.mean(axis=0), X_num.std(axis=0) + 1e-6
@@ -54,7 +47,6 @@ class BlinkSeqDataset(Dataset):
         X_num = (X_num - mean) / std
 
         # ── tensors & bookkeeping ───────────────────────────────────────
-        self.X_px      = torch.from_numpy(X_px)
         self.X_num     = torch.from_numpy(X_num)
         self.labels    = torch.from_numpy(df["manual_blink"].values.astype(np.int64))
         self.seq_len   = seq_len
@@ -66,10 +58,9 @@ class BlinkSeqDataset(Dataset):
 
     def __getitem__(self, idx):
         sl = slice(idx, idx + self.seq_len)
-        eye_seq = self.X_px[sl]    # (seq,1,24,12)
-        num_seq = self.X_num[sl]   # (seq,7)
+        num_seq = self.X_num[sl]
         label   = self.labels[idx + self.seq_len - 1]
-        return eye_seq, num_seq, label
+        return num_seq, label
 
 # ── build datasets & loaders ─────────────────────────────────────────────
 train_ds = BlinkSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=True)
@@ -103,13 +94,12 @@ def run_epoch(loader, *, training: bool):
     model.train() if training else model.eval()
     loss_sum, y_pred_all, y_true_all = 0.0, [], []
 
-    for eye, num, lbl in loader:
-        eye = eye.to(device, non_blocking=pin).float()
+    for num, lbl in loader:
         num = num.to(device, non_blocking=pin).float()
         lbl = lbl.to(device, non_blocking=pin).float()
 
         with autocast(device_type = device):
-            logits = model(eye, num)
+            logits = model(num)
             loss   = criterion(logits, lbl)
 
         if training:
@@ -162,21 +152,19 @@ if os.path.exists("blink_best.pth"):
     model.eval()
 
 
-def predict_sequence(eye_seq_np: np.ndarray, num_seq_np: np.ndarray) -> float:
+def predict_sequence(num_seq_np: np.ndarray) -> float:
     """Return blink probability for a *single* sequence (no batching).
 
     Parameters
     ----------
-    eye_seq_np : ndarray (T,1,24,12) float32 in [0,1]
-    num_seq_np : ndarray (T,7)        float32 *already z‑scored*
+    num_seq_np : ndarray (T,N) float32 *already z‑scored*
     """
-    assert eye_seq_np.shape[0] == num_seq_np.shape[0] == SEQ_LEN, "wrong seq len"
+    assert num_seq_np.shape[0] == SEQ_LEN, "wrong seq len"
 
-    eye = torch.from_numpy(eye_seq_np).unsqueeze(0).to(device)
     num = torch.from_numpy(num_seq_np).unsqueeze(0).to(device)
 
     with torch.no_grad(), autocast(device_type = device):
-        prob = torch.sigmoid(model(eye, num)).item()
+        prob = torch.sigmoid(model(num)).item()
     return prob
 
 # -------------------------------------------------------------------------
