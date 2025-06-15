@@ -25,11 +25,7 @@ class BlinkSeqDataset(Dataset):
         split_idx = int(len(data_frame) * split_ratio)
         data_frame = data_frame.iloc[:split_idx] if train else data_frame.iloc[split_idx:]
 
-        # ── image patch pixels ───────────────────────────────────────────
-        px_cols = [c for c in data_frame.columns if c.startswith("px_")]
-        X_px = (data_frame[px_cols].values.astype(np.float32) / 255.0).reshape(-1, 1, 24, 12)
-
-        # ── numeric features (EAR etc.) ──────────────────────────────────
+        # ── numeric features -------------------------------------------------
         X_num = data_frame[constants.Data_Gathering_Constants.NUM_COLS].values.astype(
             np.float32
         )
@@ -40,7 +36,6 @@ class BlinkSeqDataset(Dataset):
         X_num = (X_num - mean) / std
 
         # ── tensors & bookkeeping ───────────────────────────────────────
-        self.X_px = torch.from_numpy(X_px)
         self.X_num = torch.from_numpy(X_num)
         self.labels = torch.from_numpy(data_frame["manual_blink"].values.astype(np.int64))
         self.seq_len = seq_len
@@ -52,7 +47,6 @@ class BlinkSeqDataset(Dataset):
 
     def __getitem__(self, idx):
         sl = slice(idx, idx + self.seq_len)
-        eye_seq = self.X_px[sl]  # (seq,1,24,12)
-        num_seq = self.X_num[sl]  # (seq,7)
+        num_seq = self.X_num[sl]  # (seq, num_features)
         label = self.labels[idx + self.seq_len - 1]
-        return eye_seq, num_seq, label
+        return num_seq, label

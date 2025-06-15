@@ -55,20 +55,19 @@ class Data_Gathering_Constants:
     BLINK_PRE_FRAMES = 3
     BLINK_POST_FRAMES = 6
 
+    # Features recorded for every frame
+    # Using only the ratio of vertical eye height over
+    # horizontal eye width for the left and right eye
     NUM_COLS = [
         "ratio_left",
         "ratio_right",
-        "ratio_avg",
-        "v_left",
-        "h_left",
-        "v_right",
-        "h_right",
     ]
 
 
 # Constants for different models
 class Model_Constants:
-    NUM_FEATURES = 7
+    # Number of numeric features per frame (ratio for both eyes)
+    NUM_FEATURES = 2
 
     class MEDIUM_MODEL_CONSTANTS:
         CONVOLUTIONAL_IMAGE_CHANELS = (16, 64, 32)
@@ -89,12 +88,11 @@ class Model_Constants:
         BIDIRECTIONAL = True
 
     class XS_MODEL_CONSTANTS:
-        CONVOLUTIONAL_IMAGE_CHANELS = (16, 24)
-        CONVOLUTIONAL_NUMERIC_CHANELS = (24, 16)
-        IMAGE_OUTPUT_SIZE = 64
-        LTSM_INPUT_SIZE = IMAGE_OUTPUT_SIZE + CONVOLUTIONAL_NUMERIC_CHANELS[-1]
-        LTSM_HIDDEN = 32
-        LTSM_LAYERS = 1
+        # Number-only model with a slightly larger capacity
+        FC_CHANNELS = (128, 64, 32)
+        LTSM_INPUT_SIZE = FC_CHANNELS[-1]
+        LTSM_HIDDEN = 64
+        LTSM_LAYERS = 2
         BIDIRECTIONAL = False
 
 
