@@ -1,13 +1,13 @@
 import os, sys
-import pandas as pd
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.amp.autocast_mode import autocast
 from torch.amp.grad_scaler import GradScaler
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
 from model import BlinkRatioNet as BlinkDetector
+from data_preparation import BlinkSeqDataset
 import constants
 
 
@@ -21,46 +21,9 @@ torch.backends.cudnn.benchmark = device == "cuda"
 print("Device =", device)
 
 if not os.path.exists(CSV_PATH):
-    sys.exit(f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n")
-
-class BlinkSeqDataset(Dataset):
-
-    NUM_COLS = constants.Data_Gathering_Constants.NUM_COLS
-
-    def __init__(self, csv_path: str, seq_len: int = 50, *, train: bool = True,
-                 split_ratio: float = 0.6, numeric_stats=None):
-        # ── read once & clean ────────────────────────────────────────────
-        df = pd.read_csv(csv_path, low_memory=False).dropna().reset_index(drop=True)
-        # Strip accidental whitespace in headers (common source of KeyErrors)
-        df.columns = df.columns.str.strip()
-
-        # ── train / val split ────────────────────────────────────────────
-        split_idx = int(len(df) * split_ratio)
-        df = df.iloc[:split_idx] if train else df.iloc[split_idx:]
-
-        # ── numeric features (EAR ratios) ───────────────────────────────
-        X_num = df[self.NUM_COLS].values.astype(np.float32)
-        if numeric_stats is None:  # compute stats from *training* split only
-            mean, std = X_num.mean(axis=0), X_num.std(axis=0) + 1e-6
-        else:
-            mean, std = numeric_stats
-        X_num = (X_num - mean) / std
-
-        # ── tensors & bookkeeping ───────────────────────────────────────
-        self.X_num     = torch.from_numpy(X_num)
-        self.labels    = torch.from_numpy(df["manual_blink"].values.astype(np.int64))
-        self.seq_len   = seq_len
-        self.stats     = (mean, std)  # expose for val/test
-
-    # ————————————————————————————————————————————
-    def __len__(self):
-        return len(self.labels) - self.seq_len + 1
-
-    def __getitem__(self, idx):
-        sl = slice(idx, idx + self.seq_len)
-        num_seq = self.X_num[sl]
-        label   = self.labels[idx + self.seq_len - 1]
-        return num_seq, label
+    sys.exit(
+        f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n"
+    )
 
 # ── build datasets & loaders ─────────────────────────────────────────────
 train_ds = BlinkSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=True)

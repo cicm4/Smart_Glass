@@ -103,6 +103,7 @@ class Model_Constants:
 class Training_Constnats:
     SEQUENCE_LENGTH = 30
     SPLIT_RATIO = 0.6
-    CSV_PATH   = r"C:/Users/camil/OneDrive/Programming/Smart_Glass/dev/blink_data.csv"
+    # Path to the training CSV inside the repository
+    CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
     BATCH_SIZE = 32
     CURRENT_BEST_F1 = 0.01
