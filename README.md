@@ -31,9 +31,10 @@ Once the blink recogniser is solid, extra gestures (gaze shifts, wink patterns, 
     - Press **Q** to stop. The script prints the CSV filename (e.g. `blink_data_20250604_184055.csv`).
 3. **Train / fine‑tune**
 
-        python train_blink.py --csv path/to/your.csv --epochs 20
+        python Model/train_blink.py
 
-    Output is `models/blink_lstm_epoch20_acc0.92.torch`.
+    The script reads `dev/blinkdata.csv` and writes `blink_best.pth` plus
+    normalisation statistics to `blink_stats.npz` when validation improves.
 4. **Live test**
 
         python video_blink_test.py --model models/blink_lstm_epoch20_acc0.92.torch
