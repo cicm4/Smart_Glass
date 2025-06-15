@@ -69,7 +69,7 @@ cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 360)
 
 detector = FaceMeshDetector(maxFaces=1)
-plot_y = LivePlot(640, 360, [1, 4])
+plot_y = LivePlot(640, 360, [0, .5])
 t0 = time.time()
 # --------------------------------------------------------------
 
