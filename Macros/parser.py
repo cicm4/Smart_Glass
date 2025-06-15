@@ -16,11 +16,33 @@ class Macro:
 
     # --- building blocks -------------------------------------------------
     def left_click(self) -> "Macro":
+        """Add a left mouse click operation."""
         self.ops.append({"op": "left_click"})
         return self
 
+    def right_click(self) -> "Macro":
+        """Add a right mouse click operation."""
+        self.ops.append({"op": "right_click"})
+        return self
+
+    def middle_click(self) -> "Macro":
+        """Add a middle mouse click operation."""
+        self.ops.append({"op": "middle_click"})
+        return self
+
     def move(self, x: int, y: int, duration: float = 0.0) -> "Macro":
+        """Move the cursor to absolute ``(x, y)`` over ``duration`` seconds."""
         self.ops.append({"op": "move", "x": x, "y": y, "duration": duration})
+        return self
+
+    def move_by(self, dx: int, dy: int, duration: float = 0.0) -> "Macro":
+        """Move the cursor by ``(dx, dy)`` over ``duration`` seconds."""
+        self.ops.append({"op": "move_by", "dx": dx, "dy": dy, "duration": duration})
+        return self
+
+    def move_percent(self, px: float, py: float, duration: float = 0.0) -> "Macro":
+        """Move the cursor to ``px``/``py`` (0-1) of the screen size."""
+        self.ops.append({"op": "move_percent", "px": px, "py": py, "duration": duration})
         return self
 
     def find_image(self, image: str, confidence: float = 0.8, grayscale: bool = True) -> "Macro":

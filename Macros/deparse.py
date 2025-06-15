@@ -18,8 +18,23 @@ def run(folder: str | Path) -> None:
         kind = op.get("op")
         if kind == "left_click":
             pyautogui.click(button=op.get("button", "left"))
+        elif kind == "right_click":
+            pyautogui.click(button="right")
+        elif kind == "middle_click":
+            pyautogui.click(button="middle")
         elif kind == "move":
-            pyautogui.moveTo(op.get("x", 0), op.get("y", 0), duration=op.get("duration", 0))
+            pyautogui.moveTo(
+                op.get("x", 0), op.get("y", 0), duration=op.get("duration", 0)
+            )
+        elif kind == "move_by":
+            pyautogui.moveRel(
+                op.get("dx", 0), op.get("dy", 0), duration=op.get("duration", 0)
+            )
+        elif kind == "move_percent":
+            width, height = pyautogui.size()
+            x = int(width * op.get("px", 0))
+            y = int(height * op.get("py", 0))
+            pyautogui.moveTo(x, y, duration=op.get("duration", 0))
         elif kind == "find_image":
             img = folder / op["image"]
             loc = pyautogui.locateCenterOnScreen(
