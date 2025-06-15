@@ -32,7 +32,11 @@ class MacroDialog(QDialog):
         self.name_edit = QLineEdit(self.macro.name)
         self.list = QListWidget()
         btn_click = QPushButton("Add Left Click")
+        btn_right = QPushButton("Add Right Click")
+        btn_middle = QPushButton("Add Middle Click")
         btn_move = QPushButton("Add Mouse Move")
+        btn_move_rel = QPushButton("Add Move By")
+        btn_move_percent = QPushButton("Add Move Percent")
         btn_find = QPushButton("Add Find Image")
         btn_done = QPushButton("Done")
 
@@ -41,12 +45,20 @@ class MacroDialog(QDialog):
         layout.addWidget(self.name_edit)
         layout.addWidget(self.list)
         layout.addWidget(btn_click)
+        layout.addWidget(btn_right)
+        layout.addWidget(btn_middle)
         layout.addWidget(btn_move)
+        layout.addWidget(btn_move_rel)
+        layout.addWidget(btn_move_percent)
         layout.addWidget(btn_find)
         layout.addWidget(btn_done)
 
         btn_click.clicked.connect(self.add_click)
+        btn_right.clicked.connect(self.add_right_click)
+        btn_middle.clicked.connect(self.add_middle_click)
         btn_move.clicked.connect(self.add_move)
+        btn_move_rel.clicked.connect(self.add_move_rel)
+        btn_move_percent.clicked.connect(self.add_move_percent)
         btn_find.clicked.connect(self.add_find)
         btn_done.clicked.connect(self.on_accept)
 
@@ -55,6 +67,14 @@ class MacroDialog(QDialog):
         self.macro.left_click()
         self.list.addItem("Left Click")
 
+    def add_right_click(self) -> None:
+        self.macro.right_click()
+        self.list.addItem("Right Click")
+
+    def add_middle_click(self) -> None:
+        self.macro.middle_click()
+        self.list.addItem("Middle Click")
+
     def add_move(self) -> None:
         x, ok = QInputDialog.getInt(self, "Move", "X coordinate:")
         if not ok:
@@ -62,8 +82,47 @@ class MacroDialog(QDialog):
         y, ok = QInputDialog.getInt(self, "Move", "Y coordinate:")
         if not ok:
             return
-        self.macro.move(x, y)
-        self.list.addItem(f"Move to ({x}, {y})")
+        speed, ok = QInputDialog.getDouble(
+            self, "Move", "Speed (sec):", 0.0, 0.0, 10.0, decimals=2
+        )
+        if not ok:
+            return
+        self.macro.move(x, y, duration=speed)
+        self.list.addItem(f"Move to ({x}, {y}) in {speed}s")
+
+    def add_move_rel(self) -> None:
+        dx, ok = QInputDialog.getInt(self, "Move By", "dx:")
+        if not ok:
+            return
+        dy, ok = QInputDialog.getInt(self, "Move By", "dy:")
+        if not ok:
+            return
+        speed, ok = QInputDialog.getDouble(
+            self, "Move By", "Speed (sec):", 0.0, 0.0, 10.0, decimals=2
+        )
+        if not ok:
+            return
+        self.macro.move_by(dx, dy, duration=speed)
+        self.list.addItem(f"Move by ({dx}, {dy}) in {speed}s")
+
+    def add_move_percent(self) -> None:
+        px, ok = QInputDialog.getDouble(
+            self, "Move Percent", "X % (0-1):", 0.0, 0.0, 1.0, decimals=2
+        )
+        if not ok:
+            return
+        py, ok = QInputDialog.getDouble(
+            self, "Move Percent", "Y % (0-1):", 0.0, 0.0, 1.0, decimals=2
+        )
+        if not ok:
+            return
+        speed, ok = QInputDialog.getDouble(
+            self, "Move Percent", "Speed (sec):", 0.0, 0.0, 10.0, decimals=2
+        )
+        if not ok:
+            return
+        self.macro.move_percent(px, py, duration=speed)
+        self.list.addItem(f"Move to {px*100:.0f}%, {py*100:.0f}% in {speed}s")
 
     def add_find(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
