@@ -4,10 +4,8 @@ from cvzone.PlotModule import LivePlot
 import constants
 
 # --------------- constants ----------------
-WIDTH_IM, HEIGHT_IM = 24, 12  # eye‑ROI size to save
-CSV_NAME = (
-    f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"  # patch size for eye crops
-)
+WIDTH_IM, HEIGHT_IM = 24, 12  # size of each eye patch
+CSV_NAME = f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
 
 # Label‑window padding (frames) ---------
 BLINK_PRE_FRAMES = 3  # frames before key‑press set to 1
@@ -28,11 +26,12 @@ def eye_aspect_ratio(face, out_id, in_id, up_id, lo_id):
 
 
 def eye_patch(img, pts):
-    """Return PATCH_H×PATCH_W greyscale crop around the given polygon of eye landmarks."""
+    """Return a greyscale crop around the provided eye landmarks."""
     x, y, w, h = cv.boundingRect(pts)
-    if patch.size == 0:  # safety for empty crops
+    patch = cv.cvtColor(img[y : y + h, x : x + w], cv.COLOR_BGR2GRAY)
+    if patch.size == 0:
         return np.zeros(
-            (constants.Image_Constants.IM_WIDTH, constants.Image_Constants.IM_HEIGHT),
+            (constants.Image_Constants.IM_HEIGHT, constants.Image_Constants.IM_WIDTH),
             np.uint8,
         )
     return cv.resize(
@@ -105,7 +104,7 @@ try:
             )
             ratio_avg = (ratio_L + ratio_R) / 2
 
-            # left‑eye patch pixels
+            # eye patches
             pts_left = np.array(
                 [
                     face[id]
@@ -118,8 +117,22 @@ try:
                 ],
                 np.int32,
             )
-            patch = eye_patch(img, pts_left)  # (H,W) greyscale
-            pixels = patch.flatten().tolist()  # 288 ints
+            pts_right = np.array(
+                [
+                    face[id]
+                    for id in [
+                        constants.Image_Constants.RIGHT_EYE_OUT_ID,
+                        constants.Image_Constants.RIGHT_EYE_INSIDE_ID,
+                        constants.Image_Constants.RIGHT_EYE_UP_ID,
+                        constants.Image_Constants.RIGHT_EYE_LOW_ID,
+                    ]
+                ],
+                np.int32,
+            )
+            patch_left = eye_patch(img, pts_left)
+            patch_right = eye_patch(img, pts_right)
+            pixels_left = patch_left.flatten().tolist()
+            pixels_right = patch_right.flatten().tolist()
 
             # HUD
             cv.putText(
@@ -155,6 +168,8 @@ try:
             plot_img = plot.update(ratio_avg)
             show_stack = cvz.stackImages([cv.resize(img, (640, 360)), plot_img], 2, 1)
             cv.imshow("Blink Recorder", show_stack)
+            cv.imshow("Left Eye", patch_left)
+            cv.imshow("Right Eye", patch_right)
 
             # ---------- record row ----------
             row = dict(
@@ -169,7 +184,8 @@ try:
                 blink_count=blink_count,
                 manual_blink=manual_blink,
             )
-            row.update({f"px_{i}": pix for i, pix in enumerate(pixels)})
+            row.update({f"px_l_{i}": pix for i, pix in enumerate(pixels_left)})
+            row.update({f"px_r_{i}": pix for i, pix in enumerate(pixels_right)})
             data_rows.append(row)
 
         else:
@@ -187,7 +203,14 @@ try:
                     blink_count=blink_count,
                     manual_blink=manual_blink,
                     **{
-                        f"px_{i}": None
+                        f"px_l_{i}": None
+                        for i in range(
+                            constants.Image_Constants.IM_WIDTH
+                            * constants.Image_Constants.IM_HEIGHT
+                        )
+                    },
+                    **{
+                        f"px_r_{i}": None
                         for i in range(
                             constants.Image_Constants.IM_WIDTH
                             * constants.Image_Constants.IM_HEIGHT
@@ -196,6 +219,8 @@ try:
                 )
             )
             cv.imshow("Blink Recorder", cv.resize(img, (640, 360)))
+            cv.imshow("Left Eye", np.zeros((HEIGHT_IM, WIDTH_IM), np.uint8))
+            cv.imshow("Right Eye", np.zeros((HEIGHT_IM, WIDTH_IM), np.uint8))
 
         if cv.waitKey(1) & 0xFF == ord("q"):
             break
