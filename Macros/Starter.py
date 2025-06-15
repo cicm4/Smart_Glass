@@ -35,7 +35,7 @@ class MacroDialog(QDialog):
 
         self.name_edit = QLineEdit(self.macro.name)
         self.list = QListWidget()
-        self.list.setDragDropMode(QAbstractItemView.InternalMove)
+        self.list.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
         self.assets: dict[str, Path] = getattr(self.macro, "_assets", {}).copy()
         btn_click = QPushButton("Add Left Click")
         btn_right = QPushButton("Add Right Click")
@@ -250,7 +250,8 @@ class MainWindow(QMainWindow):
                 return
         macro_folder = self.macro_dir / dlg.macro.name
         dlg.macro.save(macro_folder)
-        self.load_macros(self.macro_dir)
+        if self.macro_dir is not None:
+            self.load_macros(self.macro_dir)
 
     def edit_macro(self):
         idx = self.view.currentIndex().row()
@@ -260,12 +261,13 @@ class MainWindow(QMainWindow):
         data = json.loads((folder / "macro.json").read_text())
         macro = Macro(data.get("name", folder.name))
         macro.ops = data.get("ops", [])
-        macro._assets = {op.get("image"): folder / op.get("image") for op in macro.ops if op.get("op") == "find_image"}
+        macro._assets = {op["image"]: folder / op["image"] for op in macro.ops if op.get("op") == "find_image" and isinstance(op.get("image"), str)}
         dlg = MacroDialog(self, macro)
         if not dlg.exec():
             return
         dlg.macro.save(folder)
-        self.load_macros(self.macro_dir)
+        if self.macro_dir is not None:
+            self.load_macros(self.macro_dir)
 
     def save_profile(self):
         if self.macro_dir is None:
