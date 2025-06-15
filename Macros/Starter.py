@@ -1,12 +1,24 @@
 from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QListView, QStackedWidget,
-    QFileDialog, QToolBar, QDialog, QVBoxLayout, QPushButton,
-    QListWidget, QInputDialog
+    QApplication,
+    QMainWindow,
+    QListView,
+    QFileDialog,
+    QToolBar,
+    QDialog,
+    QVBoxLayout,
+    QPushButton,
+    QListWidget,
+    QInputDialog,
+    QLineEdit,
+    QLabel,
+    QSplitter,
 )
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex
 from pathlib import Path
+import json
 from parser import Macro
+from deparse import run as run_macro
 
 
 class MacroDialog(QDialog):
@@ -17,6 +29,7 @@ class MacroDialog(QDialog):
         self.setWindowTitle("Edit Macro")
         self.macro = Macro("Untitled")
 
+        self.name_edit = QLineEdit(self.macro.name)
         self.list = QListWidget()
         btn_click = QPushButton("Add Left Click")
         btn_move = QPushButton("Add Mouse Move")
@@ -24,6 +37,8 @@ class MacroDialog(QDialog):
         btn_done = QPushButton("Done")
 
         layout = QVBoxLayout(self)
+        layout.addWidget(QLabel("Macro name:"))
+        layout.addWidget(self.name_edit)
         layout.addWidget(self.list)
         layout.addWidget(btn_click)
         layout.addWidget(btn_move)
@@ -33,7 +48,7 @@ class MacroDialog(QDialog):
         btn_click.clicked.connect(self.add_click)
         btn_move.clicked.connect(self.add_move)
         btn_find.clicked.connect(self.add_find)
-        btn_done.clicked.connect(self.accept)
+        btn_done.clicked.connect(self.on_accept)
 
     # ------------------------------------------------------------------
     def add_click(self) -> None:
@@ -59,6 +74,10 @@ class MacroDialog(QDialog):
         self.macro.find_image(path)
         self.list.addItem(f"Find image {Path(path).name}")
 
+    def on_accept(self) -> None:
+        self.macro.name = self.name_edit.text() or "Untitled"
+        self.accept()
+
 
 class MacroModel(QAbstractListModel):
     def __init__(self, macros: list[dict], parent=None):
@@ -77,36 +96,75 @@ class MainWindow(QMainWindow):
         self.view = QListView()
         self.model = MacroModel([])
         self.view.setModel(self.model)
-        self.stack = QStackedWidget()
+        self.splitter = QSplitter()
+        self.splitter.addWidget(self.view)
+        self.splitter.addWidget(QListWidget())  # placeholder for future widgets
 
-        self.setCentralWidget(self.view)         # swap to splitter later
+        self.setCentralWidget(self.splitter)
+
+        self.macro_dir: Path | None = None
         self._build_toolbar()
 
     def _build_toolbar(self):
         tb = QToolBar("Main", self)
         self.addToolBar(tb)
+        folder_act = QAction("Choose Folder", self)
+        folder_act.triggered.connect(self.choose_folder)
         new_act = QAction("New Macro", self)
         new_act.triggered.connect(self.new_macro)
+        run_act = QAction("Run", self)
+        run_act.triggered.connect(self.run_macro)
         save_act = QAction("Save", self)
         save_act.triggered.connect(self.save_profile)
-        tb.addActions([new_act, save_act])
+        tb.addActions([folder_act, new_act, run_act, save_act])
 
     def new_macro(self):
         dlg = MacroDialog(self)
         if not dlg.exec():
             return
-        folder = QFileDialog.getExistingDirectory(self, "Choose Macro Folder", str(Path.cwd()))
-        if not folder:
-            return
-        dlg.macro.save(folder)
-        self.model._data.append({"name": dlg.macro.name, "path": folder})
-        self.model.layoutChanged.emit()
+        if self.macro_dir is None:
+            self.choose_folder()
+            if self.macro_dir is None:
+                return
+        macro_folder = self.macro_dir / dlg.macro.name
+        dlg.macro.save(macro_folder)
+        self.load_macros(self.macro_dir)
 
     def save_profile(self):
+        if self.macro_dir is None:
+            return
         path, _ = QFileDialog.getSaveFileName(self, "Save profile", ".", "JSON (*.json)")
-        if not path: return
-        import json, pathlib
-        pathlib.Path(path).write_text(json.dumps(self.model._data, indent=2))
+        if not path:
+            return
+        data = {"folder": str(self.macro_dir)}
+        Path(path).write_text(json.dumps(data, indent=2))
+
+    # ------------------------------------------------------------------
+    def choose_folder(self):
+        folder = QFileDialog.getExistingDirectory(self, "Macro Folder", str(Path.cwd()))
+        if not folder:
+            return
+        self.load_macros(Path(folder))
+
+    def load_macros(self, folder: Path):
+        self.macro_dir = folder
+        self.model._data.clear()
+        for sub in folder.iterdir():
+            if (sub / "macro.json").exists():
+                try:
+                    data = json.loads((sub / "macro.json").read_text())
+                    name = data.get("name", sub.name)
+                except Exception:
+                    name = sub.name
+                self.model._data.append({"name": name, "path": str(sub)})
+        self.model.layoutChanged.emit()
+
+    def run_macro(self):
+        idx = self.view.currentIndex().row()
+        if idx < 0:
+            return
+        folder = self.model._data[idx]["path"]
+        run_macro(folder)
 
 if __name__ == "__main__":
     import sys
