@@ -6,7 +6,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QAbstractListModel, QModelIndex
 from pathlib import Path
-from Macros.parser import Macro
+from parser import Macro
 
 
 class MacroDialog(QDialog):
@@ -85,8 +85,10 @@ class MainWindow(QMainWindow):
     def _build_toolbar(self):
         tb = QToolBar("Main", self)
         self.addToolBar(tb)
-        new_act = QAction("New Macro", self, triggered=self.new_macro)
-        save_act = QAction("Save", self, triggered=self.save_profile)
+        new_act = QAction("New Macro", self)
+        new_act.triggered.connect(self.new_macro)
+        save_act = QAction("Save", self)
+        save_act.triggered.connect(self.save_profile)
         tb.addActions([new_act, save_act])
 
     def new_macro(self):
