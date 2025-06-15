@@ -1,3 +1,8 @@
+import sys
+import os
+# Add parent directory to path
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import time
 import cv2 as cv
 import cvzone as cvz
@@ -12,8 +17,8 @@ CSV_NAME = f"blink_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
 
 cap = cv.VideoCapture(0)
 # fix camera warping by halving default resolution
-w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH) // 2)
-h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT) // 2)
+w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH) / 2)
+h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT) / 2)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, w)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, h)
 
@@ -40,7 +45,7 @@ def eye_ratio(face, ids, det):
     return ver / (hor + 1e-6)
 
 detector = FaceMeshDetector(maxFaces=1)
-plot = LivePlot(640, 360, [0.5, 3])
+plot = LivePlot(640, 360, [0, 0.5])
 
 data_rows = []
 blink_count = 0
@@ -104,7 +109,8 @@ try:
         prev_key = key_now
 finally:
     if data_rows:
-        pd.DataFrame(data_rows).to_csv(CSV_NAME, index=False)
+        os.makedirs("data", exist_ok=True)
+        pd.DataFrame(data_rows).to_csv(os.path.join("data", CSV_NAME), index=False)
         print(f"Saved {len(data_rows)} rows → {CSV_NAME}")
     cap.release()
     cv.destroyAllWindows()
