@@ -38,16 +38,32 @@ class Image_Constants:
         374,
     )
 
-    ID_ARRAYS = (
-        LEFT_EYE_OUT_ID,
-        LEFT_EYE_INSIDE_ID,
-        LEFT_EYE_UP_ID,
-        LEFT_EYE_LOW_ID,
-        RIGHT_EYE_OUT_ID,
-        RIGHT_EYE_INSIDE_ID,
-        RIGHT_EYE_UP_ID,
-        RIGHT_EYE_LOW_ID,
+    LEFT_EYE_IDS = (
+        33, 133, 144, 145, 153, 154, 155, 157, 158, 159, 160, 161, 163, 173
     )
+    RIGHT_EYE_IDS = (
+        263, 362, 373, 374, 380, 381, 382, 384, 385, 386, 387, 388, 390, 398
+    )
+
+    LEFT_EYE_PAIR_IDS = (
+        (144, 158),
+        (145, 159),
+        (153, 160),
+        (154, 161),
+        (155, 163),
+        (157, 173),
+    )
+
+    RIGHT_EYE_PAIR_IDS = (
+        (373, 385),
+        (374, 386),
+        (380, 387),
+        (381, 388),
+        (382, 390),
+        (384, 398),
+    )
+
+    ID_ARRAYS = LEFT_EYE_IDS + RIGHT_EYE_IDS
 
 
 # Blinking frames
@@ -58,12 +74,26 @@ class Data_Gathering_Constants:
     NUM_COLS = [
         "ratio_left",
         "ratio_right",
+        "v1_left",
+        "v2_left",
+        "v3_left",
+        "v4_left",
+        "v5_left",
+        "v6_left",
+        "v1_right",
+        "v2_right",
+        "v3_right",
+        "v4_right",
+        "v5_right",
+        "v6_right",
+        "width_left",
+        "width_right",
     ]
 
 
 # Constants for different models
 class Model_Constants:
-    NUM_FEATURES = 2
+    NUM_FEATURES = 16
 
     class RATIO_MODEL_CONSTANTS:
         FC_SIZES = (64, 64, 32)

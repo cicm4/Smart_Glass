@@ -20,6 +20,7 @@ CURR_BEST_F1 = constants.Training_Constnats.CURRENT_BEST_F1
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.backends.cudnn.benchmark = device == "cuda"
 print("Device =", device)
+print(f"Training with {constants.Model_Constants.NUM_FEATURES} features")
 
 if not os.path.exists(CSV_PATH):
     sys.exit(
@@ -39,7 +40,7 @@ val_dl   = DataLoader(val_ds,   batch_size=BATCH_SIZE, shuffle=False,
 
 # -------------------------------------------------------------------------
 # ---------- BLOCK 3 : Training setup ------------------------------------
-model = BlinkDetector().to(device)
+model = BlinkDetector(num_features=constants.Model_Constants.NUM_FEATURES).to(device)
 
 # ░ Address class‑imbalance with pos_weight ░
 blink_frac = train_ds.labels.float().mean().item()

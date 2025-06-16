@@ -34,17 +34,31 @@ R_IN = Image_Constants.RIGHT_EYE_INSIDE_ID
 R_UP = Image_Constants.RIGHT_EYE_UP_ID
 R_LO = Image_Constants.RIGHT_EYE_LOW_ID
 
+L_PAIRS = Image_Constants.LEFT_EYE_PAIR_IDS
+R_PAIRS = Image_Constants.RIGHT_EYE_PAIR_IDS
+
 POINTS_USED = Image_Constants.ID_ARRAYS
 # ──────────────────────────────────────────────────────────────
 
 # ---------- helper functions (copied from collector) ----------
 
-def ear(face, out_id, in_id, up_id, lo_id, det):
+def eye_metrics(face, out_id, in_id, up_id, lo_id, det):
+    """Return EAR ratio with vertical and horizontal distances."""
     p_out, p_in = face[out_id], face[in_id]
     p_up, p_lo = face[up_id], face[lo_id]
     ver, _ = det.findDistance(p_up, p_lo)
     hor, _ = det.findDistance(p_out, p_in)
-    return ver / (hor + 1e-6)
+    ratio = ver / (hor + 1e-6)
+    return ratio, ver, hor
+
+def vertical_ratios(face, pairs, out_id, in_id, det):
+    """Return list of vertical/width ratios and eye width."""
+    width, _ = det.findDistance(face[out_id], face[in_id])
+    feats = []
+    for up_id, lo_id in pairs:
+        h, _ = det.findDistance(face[up_id], face[lo_id])
+        feats.append(h / (width + 1e-6))
+    return feats, width
 
 
 # --------------------------------------------------------------
@@ -89,10 +103,22 @@ while True:
             cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
 
         # ── numeric features
-        ratio_L = ear(face, L_OUT, L_IN, L_UP, L_LO, detector)
-        ratio_R = ear(face, R_OUT, R_IN, R_UP, R_LO, detector)
+        ratio_L, _, _ = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, detector)
+        ratio_R, _, _ = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, detector)
+        verts_L, width_L = vertical_ratios(face, L_PAIRS, L_OUT, L_IN, detector)
+        verts_R, width_R = vertical_ratios(face, R_PAIRS, R_OUT, R_IN, detector)
         ratio_avg = (ratio_L + ratio_R) / 2
-        num_feats = np.array([ratio_L, ratio_R], dtype=np.float32)
+        num_feats = np.array(
+            [
+                ratio_L,
+                ratio_R,
+                *verts_L,
+                *verts_R,
+                width_L,
+                width_R,
+            ],
+            dtype=np.float32,
+        )
 
         num_buf.append(num_feats)
         if len(num_buf) > SEQ_LEN:
