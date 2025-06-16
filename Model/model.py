@@ -8,7 +8,12 @@ import torch.nn as nn
 import constants
 
 class BlinkRatioNet(nn.Module):
-    """LSTM-based classifier using only EAR ratios."""
+    """Small LSTM classifier operating on extended eye metrics.
+
+    The network ingests sequences of numeric features such as EAR ratios,
+    vertical distances, and eye width. The feature count is controlled by
+    ``Model_Constants.NUM_FEATURES`` so training and inference stay in sync.
+    """
 
     def __init__(
         self,

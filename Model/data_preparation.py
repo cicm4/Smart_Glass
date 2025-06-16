@@ -26,6 +26,14 @@ class BlinkSeqDataset(Dataset):
         # Strip accidental whitespace in headers (common source of KeyErrors)
         data_frame.columns = data_frame.columns.str.strip()
 
+        # Some recorded CSVs may lack the newest feature columns. Create them
+        # on the fly so old datasets remain compatible with the latest model.
+        expected_cols = list(constants.Data_Gathering_Constants.NUM_COLS)
+        for col in expected_cols:
+            if col not in data_frame:
+                data_frame[col] = 0.0
+        data_frame = data_frame.reindex(columns=expected_cols + ["blink_count", "manual_blink"])  # keep order
+
         # ── train / val split ────────────────────────────────────────────
         split_idx = int(len(data_frame) * split_ratio)
         data_frame = data_frame.iloc[:split_idx] if train else data_frame.iloc[split_idx:]
