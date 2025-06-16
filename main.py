@@ -15,12 +15,10 @@ from constants import (
     Image_Constants,
     Training_Constnats,
 )
-from Model.model import BlinkModelMed as model  # adjust import path if needed
+from Model.model import BlinkRatioNet as model
 
 # ───────── configuration ──────────────────────────────────────
 SEQ_LEN = Training_Constnats.SEQUENCE_LENGTH
-PATCH_W = Image_Constants.IM_WIDTH
-PATCH_H = Image_Constants.IM_HEIGHT
 
 THRESH = BLINKING_THREASHOLD
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -46,15 +44,7 @@ def ear(face, out_id, in_id, up_id, lo_id, det):
     p_up, p_lo = face[up_id], face[lo_id]
     ver, _ = det.findDistance(p_up, p_lo)
     hor, _ = det.findDistance(p_out, p_in)
-    return (ver / hor) * 10, ver, hor
-
-
-def eye_patch(img, pts):
-    x, y, w, h = cv.boundingRect(pts)
-    patch = cv.cvtColor(img[y : y + h, x : x + w], cv.COLOR_BGR2GRAY)
-    if patch.size == 0:
-        return np.zeros((PATCH_H, PATCH_W), np.uint8)
-    return cv.resize(patch, (PATCH_W, PATCH_H), interpolation=cv.INTER_AREA)
+    return ver / (hor + 1e-6)
 
 
 # --------------------------------------------------------------
@@ -64,11 +54,11 @@ model = model().to(DEVICE).eval()
 model.load_state_dict(torch.load(MODEL_WEIGHTS, map_location=DEVICE))
 
 stats = np.load(STATS_NPZ)
-MEAN, STD = stats["mean"], stats["std"]  # (7,) each
+MEAN, STD = stats["mean"], stats["std"]
 # --------------------------------------------------------------
 
 # ---------- runtime buffers -----------------------------------
-eye_buf, num_buf = [], []  # hold SEQ_LEN frames
+num_buf = []  # hold SEQ_LEN frames
 blink_count = 0
 prev_pred = 0
 # --------------------------------------------------------------
@@ -79,7 +69,7 @@ cap.set(cv.CAP_PROP_FRAME_WIDTH, 640)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, 360)
 
 detector = FaceMeshDetector(maxFaces=1)
-plot_y = LivePlot(640, 360, [1, 4])
+plot_y = LivePlot(640, 360, [0, .5])
 t0 = time.time()
 # --------------------------------------------------------------
 
@@ -99,35 +89,22 @@ while True:
             cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
 
         # ── numeric features
-        ratio_L, vL, hL = ear(face, L_OUT, L_IN, L_UP, L_LO, detector)
-        ratio_R, vR, hR = ear(face, R_OUT, R_IN, R_UP, R_LO, detector)
+        ratio_L = ear(face, L_OUT, L_IN, L_UP, L_LO, detector)
+        ratio_R = ear(face, R_OUT, R_IN, R_UP, R_LO, detector)
         ratio_avg = (ratio_L + ratio_R) / 2
-        num_feats = np.array(
-            [ratio_L, ratio_R, ratio_avg, vL, hL, vR, hR], dtype=np.float32
-        )
+        num_feats = np.array([ratio_L, ratio_R], dtype=np.float32)
 
-        # ── eye patch (left eye)
-        pts_left = np.array([face[id_] for id_ in (L_OUT, L_IN, L_UP, L_LO)], np.int32)
-        patch = eye_patch(img, pts_left).T.astype(np.float32) / 255.0  # (24,12)
-
-        # add to buffers
-        eye_buf.append(patch[None])  # (1,24,12)
         num_buf.append(num_feats)
-        if len(eye_buf) > SEQ_LEN:
-            eye_buf.pop(0)
         if len(num_buf) > SEQ_LEN:
             num_buf.pop(0)
 
         # run model when window full
-        if len(eye_buf) == SEQ_LEN:
-            eye_arr = np.stack(eye_buf)  # (SEQ_LEN,1,24,12)
-            num_arr = (np.stack(num_buf) - MEAN) / STD  # z‑score
-
-            eye_t = torch.from_numpy(eye_arr)[None].to(DEVICE)  # (1,SEQ_LEN,1,24,12)
-            num_t = torch.from_numpy(num_arr)[None].to(DEVICE)  # (1,SEQ_LEN,7)
+        if len(num_buf) == SEQ_LEN:
+            num_arr = (np.stack(num_buf) - MEAN) / STD
+            num_t = torch.from_numpy(num_arr)[None].to(DEVICE)
 
             with torch.no_grad():
-                p = torch.sigmoid(model(eye_t, num_t)).item()
+                p = torch.sigmoid(model(num_t)).item()
 
             pred = int(p > THRESH)
             if pred == 1 and prev_pred == 0:  # count rising edge
