@@ -58,12 +58,16 @@ class Data_Gathering_Constants:
     NUM_COLS = [
         "ratio_left",
         "ratio_right",
+        "height_left",
+        "height_right",
+        "width_left",
+        "width_right",
     ]
 
 
 # Constants for different models
 class Model_Constants:
-    NUM_FEATURES = 2
+    NUM_FEATURES = 6
 
     class RATIO_MODEL_CONSTANTS:
         FC_SIZES = (64, 64, 32)
