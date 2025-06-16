@@ -65,6 +65,16 @@ try:
         if key_now and not prev_key:
             blink_count += 1
             post_ctr = BLINK_POST
+            cv.putText(
+              img,
+              "Blink detected!",
+              (50, 100),
+              cv.FONT_HERSHEY_SIMPLEX,
+              2,
+              (0, 0, 255),
+              4,
+              cv.LINE_AA,
+            )
             for i in range(1, BLINK_PRE + 1):
                 if len(data_rows) >= i:
                     data_rows[-i]["manual_blink"] = 1
@@ -90,7 +100,7 @@ try:
             )
             data_rows.append(row)
             plot_img = plot.update((ratio_L + ratio_R) / 2)
-            stack = cvz.stackImages([cv.resize(img, (640, 360)), plot_img], 2, 1)
+            stack = cvz.stackImages([img, plot_img], 2, 1)
             cv.imshow("Blink Recorder", stack)
         else:
             data_rows.append(
@@ -102,7 +112,7 @@ try:
                     manual_blink=manual_blink,
                 )
             )
-            cv.imshow("Blink Recorder", cv.resize(img, (640, 360)))
+            cv.imshow("Blink Recorder", img)
 
         if cv.waitKey(1) & 0xFF == ord("q"):
             break

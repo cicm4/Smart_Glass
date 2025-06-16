@@ -143,7 +143,6 @@ while True:
 
         # plot & show
         img_plot = plot_y.update(ratio_avg)
-        img = cv.resize(img, (640, 360))
         img_stack = cvz.stackImages([img, img_plot], 2, 1)
         cv.imshow("BlinkDetector", img_stack)
     else:

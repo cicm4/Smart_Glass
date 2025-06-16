@@ -79,4 +79,4 @@ class Training_Constnats:
     # Path to the training CSV inside the repository
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
     BATCH_SIZE = 32
-    CURRENT_BEST_F1 = 0.01
+    CURRENT_BEST_F1 = 0.411
