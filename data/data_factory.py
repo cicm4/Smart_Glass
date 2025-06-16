@@ -37,6 +37,18 @@ R_IDS = (
     constants.Image_Constants.RIGHT_EYE_UP_ID,
     constants.Image_Constants.RIGHT_EYE_LOW_ID,
 )
+L_PAIRS = constants.Image_Constants.LEFT_EYE_PAIR_IDS
+R_PAIRS = constants.Image_Constants.RIGHT_EYE_PAIR_IDS
+
+def vertical_ratios(face, pairs, out_id, in_id, det):
+    """Return list of vertical/width ratios and eye width."""
+    p_out, p_in = face[out_id], face[in_id]
+    width, _ = det.findDistance(p_out, p_in)
+    feats = []
+    for up_id, lo_id in pairs:
+        h, _ = det.findDistance(face[up_id], face[lo_id])
+        feats.append(h / (width + 1e-6))
+    return feats, width
 
 def eye_metrics(face, ids, det):
     """Return EAR ratio along with vertical and horizontal distances."""
@@ -91,37 +103,44 @@ try:
             face = faces[0]
             for pid in constants.Image_Constants.ID_ARRAYS:
                 cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
-            ratio_L, ver_L, hor_L = eye_metrics(face, L_IDS, detector)
-            ratio_R, ver_R, hor_R = eye_metrics(face, R_IDS, detector)
-            row = dict(
-                timestamp=timestamp,
-                ratio_left=ratio_L,
-                ratio_right=ratio_R,
-                height_left=ver_L,
-                height_right=ver_R,
-                width_left=hor_L,
-                width_right=hor_R,
-                blink_count=blink_count,
-                manual_blink=manual_blink,
+            ratio_L, _, _ = eye_metrics(face, L_IDS, detector)
+            ratio_R, _, _ = eye_metrics(face, R_IDS, detector)
+            verts_L, width_L = vertical_ratios(
+                face, L_PAIRS, constants.Image_Constants.LEFT_EYE_OUT_ID,
+                constants.Image_Constants.LEFT_EYE_INSIDE_ID, detector
             )
+            verts_R, width_R = vertical_ratios(
+                face, R_PAIRS, constants.Image_Constants.RIGHT_EYE_OUT_ID,
+                constants.Image_Constants.RIGHT_EYE_INSIDE_ID, detector
+            )
+            row = {
+                "timestamp": timestamp,
+                "ratio_left": ratio_L,
+                "ratio_right": ratio_R,
+                **{f"v{i+1}_left": v for i, v in enumerate(verts_L)},
+                **{f"v{i+1}_right": v for i, v in enumerate(verts_R)},
+                "width_left": width_L,
+                "width_right": width_R,
+                "blink_count": blink_count,
+                "manual_blink": manual_blink,
+            }
             data_rows.append(row)
             plot_img = plot.update((ratio_L + ratio_R) / 2)
             stack = cvz.stackImages([img, plot_img], 2, 1)
             cv.imshow("Blink Recorder", stack)
         else:
-            data_rows.append(
-                dict(
-                    timestamp=timestamp,
-                    ratio_left=None,
-                    ratio_right=None,
-                    height_left=None,
-                    height_right=None,
-                    width_left=None,
-                    width_right=None,
-                    blink_count=blink_count,
-                    manual_blink=manual_blink,
-                )
-            )
+            none_row = {
+                "timestamp": timestamp,
+                "ratio_left": None,
+                "ratio_right": None,
+                **{f"v{i+1}_left": None for i in range(len(L_PAIRS))},
+                **{f"v{i+1}_right": None for i in range(len(R_PAIRS))},
+                "width_left": None,
+                "width_right": None,
+                "blink_count": blink_count,
+                "manual_blink": manual_blink,
+            }
+            data_rows.append(none_row)
             cv.imshow("Blink Recorder", img)
 
         if cv.waitKey(1) & 0xFF == ord("q"):

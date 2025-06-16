@@ -34,6 +34,9 @@ R_IN = Image_Constants.RIGHT_EYE_INSIDE_ID
 R_UP = Image_Constants.RIGHT_EYE_UP_ID
 R_LO = Image_Constants.RIGHT_EYE_LOW_ID
 
+L_PAIRS = Image_Constants.LEFT_EYE_PAIR_IDS
+R_PAIRS = Image_Constants.RIGHT_EYE_PAIR_IDS
+
 POINTS_USED = Image_Constants.ID_ARRAYS
 # ──────────────────────────────────────────────────────────────
 
@@ -47,6 +50,18 @@ def eye_metrics(face, out_id, in_id, up_id, lo_id, det):
     hor, _ = det.findDistance(p_out, p_in)
     ratio = ver / (hor + 1e-6)
     return ratio, ver, hor
+<<<<<<< 65lezt-codex/update-data-collection-and-related-files
+
+def vertical_ratios(face, pairs, out_id, in_id, det):
+    """Return list of vertical/width ratios and eye width."""
+    width, _ = det.findDistance(face[out_id], face[in_id])
+    feats = []
+    for up_id, lo_id in pairs:
+        h, _ = det.findDistance(face[up_id], face[lo_id])
+        feats.append(h / (width + 1e-6))
+    return feats, width
+=======
+>>>>>>> testing
 
 
 # --------------------------------------------------------------
@@ -91,11 +106,29 @@ while True:
             cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
 
         # ── numeric features
+<<<<<<< 65lezt-codex/update-data-collection-and-related-files
+        ratio_L, _, _ = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, detector)
+        ratio_R, _, _ = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, detector)
+        verts_L, width_L = vertical_ratios(face, L_PAIRS, L_OUT, L_IN, detector)
+        verts_R, width_R = vertical_ratios(face, R_PAIRS, R_OUT, R_IN, detector)
+        ratio_avg = (ratio_L + ratio_R) / 2
+        num_feats = np.array(
+            [
+                ratio_L,
+                ratio_R,
+                *verts_L,
+                *verts_R,
+                width_L,
+                width_R,
+            ],
+            dtype=np.float32,
+=======
         ratio_L, ver_L, hor_L = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, detector)
         ratio_R, ver_R, hor_R = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, detector)
         ratio_avg = (ratio_L + ratio_R) / 2
         num_feats = np.array(
             [ratio_L, ratio_R, ver_L, ver_R, hor_L, hor_R], dtype=np.float32
+>>>>>>> testing
         )
 
         num_buf.append(num_feats)
