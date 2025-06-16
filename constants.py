@@ -74,6 +74,7 @@ class Data_Gathering_Constants:
     NUM_COLS = [
         "ratio_left",
         "ratio_right",
+<<<<<<< 65lezt-codex/update-data-collection-and-related-files
         "v1_left",
         "v2_left",
         "v3_left",
@@ -86,6 +87,10 @@ class Data_Gathering_Constants:
         "v4_right",
         "v5_right",
         "v6_right",
+=======
+        "height_left",
+        "height_right",
+>>>>>>> testing
         "width_left",
         "width_right",
     ]
@@ -93,7 +98,11 @@ class Data_Gathering_Constants:
 
 # Constants for different models
 class Model_Constants:
+<<<<<<< 65lezt-codex/update-data-collection-and-related-files
     NUM_FEATURES = 16
+=======
+    NUM_FEATURES = 6
+>>>>>>> testing
 
     class RATIO_MODEL_CONSTANTS:
         FC_SIZES = (64, 64, 32)
