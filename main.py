@@ -39,12 +39,14 @@ POINTS_USED = Image_Constants.ID_ARRAYS
 
 # ---------- helper functions (copied from collector) ----------
 
-def ear(face, out_id, in_id, up_id, lo_id, det):
+def eye_metrics(face, out_id, in_id, up_id, lo_id, det):
+    """Return EAR ratio with vertical and horizontal distances."""
     p_out, p_in = face[out_id], face[in_id]
     p_up, p_lo = face[up_id], face[lo_id]
     ver, _ = det.findDistance(p_up, p_lo)
     hor, _ = det.findDistance(p_out, p_in)
-    return ver / (hor + 1e-6)
+    ratio = ver / (hor + 1e-6)
+    return ratio, ver, hor
 
 
 # --------------------------------------------------------------
@@ -89,10 +91,12 @@ while True:
             cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
 
         # ── numeric features
-        ratio_L = ear(face, L_OUT, L_IN, L_UP, L_LO, detector)
-        ratio_R = ear(face, R_OUT, R_IN, R_UP, R_LO, detector)
+        ratio_L, ver_L, hor_L = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, detector)
+        ratio_R, ver_R, hor_R = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, detector)
         ratio_avg = (ratio_L + ratio_R) / 2
-        num_feats = np.array([ratio_L, ratio_R], dtype=np.float32)
+        num_feats = np.array(
+            [ratio_L, ratio_R, ver_L, ver_R, hor_L, hor_R], dtype=np.float32
+        )
 
         num_buf.append(num_feats)
         if len(num_buf) > SEQ_LEN:

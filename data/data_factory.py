@@ -38,11 +38,13 @@ R_IDS = (
     constants.Image_Constants.RIGHT_EYE_LOW_ID,
 )
 
-def eye_ratio(face, ids, det):
+def eye_metrics(face, ids, det):
+    """Return EAR ratio along with vertical and horizontal distances."""
     p_out, p_in, p_up, p_lo = [face[i] for i in ids]
     ver, _ = det.findDistance(p_up, p_lo)
     hor, _ = det.findDistance(p_out, p_in)
-    return ver / (hor + 1e-6)
+    ratio = ver / (hor + 1e-6)
+    return ratio, ver, hor
 
 detector = FaceMeshDetector(maxFaces=1)
 plot = LivePlot(640, 360, [0, 0.5])
@@ -89,12 +91,16 @@ try:
             face = faces[0]
             for pid in constants.Image_Constants.ID_ARRAYS:
                 cv.circle(img, face[pid], 3, (255, 0, 255), cv.FILLED)
-            ratio_L = eye_ratio(face, L_IDS, detector)
-            ratio_R = eye_ratio(face, R_IDS, detector)
+            ratio_L, ver_L, hor_L = eye_metrics(face, L_IDS, detector)
+            ratio_R, ver_R, hor_R = eye_metrics(face, R_IDS, detector)
             row = dict(
                 timestamp=timestamp,
                 ratio_left=ratio_L,
                 ratio_right=ratio_R,
+                height_left=ver_L,
+                height_right=ver_R,
+                width_left=hor_L,
+                width_right=hor_R,
                 blink_count=blink_count,
                 manual_blink=manual_blink,
             )
@@ -108,6 +114,10 @@ try:
                     timestamp=timestamp,
                     ratio_left=None,
                     ratio_right=None,
+                    height_left=None,
+                    height_right=None,
+                    width_left=None,
+                    width_right=None,
                     blink_count=blink_count,
                     manual_blink=manual_blink,
                 )
