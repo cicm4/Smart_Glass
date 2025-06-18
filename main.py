@@ -13,12 +13,12 @@ from constants import (
     STATS_NPZ,
     BLINKING_THREASHOLD,
     Image_Constants,
-    Training_Constnats,
+    Training_Constants,
 )
 from Model.model import BlinkRatioNet as model
 
 # ───────── configuration ──────────────────────────────────────
-SEQ_LEN = Training_Constnats.SEQUENCE_LENGTH
+SEQ_LEN = Training_Constants.SEQUENCE_LENGTH
 
 THRESH = BLINKING_THREASHOLD
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"

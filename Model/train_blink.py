@@ -12,10 +12,10 @@ from data_preparation import BlinkSeqDataset
 import constants
 
 
-CSV_PATH   = constants.Training_Constnats.CSV_PATH
-SEQ_LEN    = constants.Training_Constnats.SEQUENCE_LENGTH
-BATCH_SIZE = constants.Training_Constnats.BATCH_SIZE
-CURR_BEST_F1 = constants.Training_Constnats.CURRENT_BEST_F1
+CSV_PATH   = constants.Training_Constants.CSV_PATH
+SEQ_LEN    = constants.Training_Constants.SEQUENCE_LENGTH
+BATCH_SIZE = constants.Training_Constants.BATCH_SIZE
+CURR_BEST_F1 = constants.Training_Constants.CURRENT_BEST_F1
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 torch.backends.cudnn.benchmark = device == "cuda"

@@ -111,7 +111,7 @@ class Model_Constants:
         BIDIRECTIONAL = True
 
 
-class Training_Constnats:
+class Training_Constants:
     SEQUENCE_LENGTH = 30
     SPLIT_RATIO = 0.8
     # Path to the training CSV inside the repository
@@ -119,4 +119,4 @@ class Training_Constnats:
     BATCH_SIZE = 32
     CURRENT_BEST_F1 = 0.591
     IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
-    IMG_CURRENT_BEST_F1 = 0.243
+    IMG_CURRENT_BEST_F1 = 0.562

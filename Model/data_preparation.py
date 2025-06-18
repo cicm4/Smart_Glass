@@ -15,7 +15,7 @@ class BlinkSeqDataset(Dataset):
     def __init__(
         self,
         csv_path: str,
-        seq_len: int = constants.Training_Constnats.SEQUENCE_LENGTH,
+        seq_len: int = constants.Training_Constants.SEQUENCE_LENGTH,
         *,
         train: bool = True,
         split_ratio: float = 0.6,
@@ -69,7 +69,7 @@ class EyeSeqDataset(Dataset):
     def __init__(
         self,
         csv_path: str,
-        seq_len: int = constants.Training_Constnats.SEQUENCE_LENGTH,
+        seq_len: int = constants.Training_Constants.SEQUENCE_LENGTH,
         *,
         train: bool = True,
         split_ratio: float = 0.6,

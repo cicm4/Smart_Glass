@@ -41,7 +41,7 @@ from constants import (
     STATS_NPZ,
     BLINKING_THREASHOLD,
     Image_Constants,
-    Training_Constnats,
+    Training_Constants,
 )
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -93,7 +93,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Smart Glasses")
 
         # ── ML + vision stack ──────────────────────────────────────────
-        self.seq_len = Training_Constnats.SEQUENCE_LENGTH
+        self.seq_len = Training_Constants.SEQUENCE_LENGTH
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = BlinkRatioNet().to(self.device).eval()
         self.model.load_state_dict(
