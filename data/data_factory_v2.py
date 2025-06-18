@@ -12,7 +12,9 @@ from cvzone.FaceMeshModule import FaceMeshDetector
 import constants
 
 # Constants
-EYE_IMAGE_SIZE = 50  # 50x50 pixels
+# Use a compact grayscale eye patch to keep file sizes small
+EYE_W = constants.Image_Constants.IM_WIDTH
+EYE_H = constants.Image_Constants.IM_HEIGHT
 CSV_NAME = f"eye_image_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
 
 # Initialize video capture
@@ -37,7 +39,7 @@ t0 = time.time()
 
 # Helper function to extract eye image
 def extract_eye_image(img, landmarks, padding=5):
-    """Extract a square eye image based on landmarks with padding"""
+    """Return a normalised grayscale eye patch."""
     x_coords = [landmarks[i][0] for i in LEFT_EYE_LANDMARKS]
     y_coords = [landmarks[i][1] for i in LEFT_EYE_LANDMARKS]
     
@@ -51,32 +53,14 @@ def extract_eye_image(img, landmarks, padding=5):
     if x_min >= x_max or y_min >= y_max:
         return None
         
-    # Crop the eye region
+    # Crop the eye region and convert to grayscale
     eye_img = img[y_min:y_max, x_min:x_max]
-    
-    # Calculate desired dimensions to keep aspect ratio
-    h, w = eye_img.shape[:2]
-    if h > w:
-        new_h = EYE_IMAGE_SIZE
-        new_w = int(w * (EYE_IMAGE_SIZE / h))
-    else:
-        new_w = EYE_IMAGE_SIZE
-        new_h = int(h * (EYE_IMAGE_SIZE / w))
-    
-    # Resize while maintaining aspect ratio
-    eye_img = cv.resize(eye_img, (new_w, new_h))
-    
-    # Create a black background image
-    square_img = np.zeros((EYE_IMAGE_SIZE, EYE_IMAGE_SIZE, 3), dtype=np.uint8)
-    
-    # Calculate offsets to center the eye image
-    x_offset = (EYE_IMAGE_SIZE - new_w) // 2
-    y_offset = (EYE_IMAGE_SIZE - new_h) // 2
-    
-    # Place the resized eye image onto the black background
-    square_img[y_offset:y_offset+new_h, x_offset:x_offset+new_w] = eye_img
-    
-    return square_img
+    eye_img = cv.cvtColor(eye_img, cv.COLOR_BGR2GRAY)
+
+    # Resize to the target patch size
+    eye_img = cv.resize(eye_img, (EYE_W, EYE_H))
+
+    return eye_img
 
 # Display instructions
 print("Press SPACE to annotate a blink")
@@ -120,15 +104,15 @@ try:
             
             # Show the extracted eye image
             if eye_img is not None:
-                # Show the eye image
-                eye_display = cv.resize(eye_img, (100, 100))  # Make it bigger for display
+                eye_display = cv.resize(eye_img, (100, 100))
+                eye_display = cv.cvtColor(eye_display, cv.COLOR_GRAY2BGR)
                 img[20:120, 20:120] = eye_display
                 
                 # Create a row for the CSV
                 # First value is blink status
                 row = {"manual_blink": manual_blink}
                 
-                # Flatten the RGB eye image (50x50x3 = 7500 values)
+                # Flatten the grayscale eye image (32x16 = 512 values)
                 flat_img = eye_img.flatten()
                 
                 # Add each pixel value to the row
