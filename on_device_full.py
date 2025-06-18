@@ -27,18 +27,18 @@ from PySide6.QtWidgets import (
     QListView,
     QMainWindow,
     QFileDialog,
+    QComboBox,
     QWidget,
     QVBoxLayout,
     QSplitter,
     QToolBar,
 )
 # ────── project ───────────────────────────────────────────────────────────
-from Model.model import BlinkRatioNet
+from Model.model import BlinkRatioNet, EyeBlinkNet
 from Macros.deparse import run as run_macro
 from Macros.Starter import MacroModel, MainWindow as MacroEditorWindow
 from constants import (
-    MODEL_WEIGHTS,
-    STATS_NPZ,
+    Paths,
     BLINKING_THREASHOLD,
     Image_Constants,
     Training_Constants,
@@ -69,6 +69,26 @@ def vertical_ratios(face, pairs, out_id, in_id, det):
     return feats, width
 
 
+def extract_eye_image(img, face, padding: int = 5):
+    """Return a normalised left-eye grayscale patch or None."""
+    ids = Image_Constants.LEFT_EYE_IDS
+    xs = [face[i][0] for i in ids]
+    ys = [face[i][1] for i in ids]
+    x0 = max(0, int(min(xs)) - padding)
+    y0 = max(0, int(min(ys)) - padding)
+    x1 = min(img.shape[1], int(max(xs)) + padding)
+    y1 = min(img.shape[0], int(max(ys)) + padding)
+    if x0 >= x1 or y0 >= y1:
+        return None
+    eye = cv2.cvtColor(img[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
+    eye = cv2.resize(
+        eye,
+        (Image_Constants.IM_WIDTH, Image_Constants.IM_HEIGHT),
+        interpolation=cv2.INTER_AREA,
+    )
+    return eye
+
+
 # ────── threaded macro runner ─────────────────────────────────────────────
 class MacroRunnerThread(QThread):
     finished = Signal(str)           # emits folder path when done
@@ -95,12 +115,9 @@ class MainWindow(QMainWindow):
         # ── ML + vision stack ──────────────────────────────────────────
         self.seq_len = Training_Constants.SEQUENCE_LENGTH
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model = BlinkRatioNet().to(self.device).eval()
-        self.model.load_state_dict(
-            torch.load(MODEL_WEIGHTS, map_location=self.device)
-        )
-        stats = np.load(STATS_NPZ)
-        self.mean, self.std = stats["mean"], stats["std"]
+        self.use_image_model = False
+        self.model_combo = None
+        self.load_selected_model(initial=True)
 
         self.detector = FaceMeshDetector(maxFaces=1)
         self.cap = cv2.VideoCapture(0)
@@ -147,6 +164,10 @@ class MainWindow(QMainWindow):
         tb = QToolBar("Main", self)
         self.addToolBar(tb)
 
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["Numeric", "Eye Image"])
+        self.model_combo.currentIndexChanged.connect(self.load_selected_model)
+
         choose_act = QAction("Choose Folder", self)
         choose_act.triggered.connect(self.choose_folder)
 
@@ -156,6 +177,7 @@ class MainWindow(QMainWindow):
         editor_act = QAction("Macro Editor", self)
         editor_act.triggered.connect(self.open_macro_editor)
 
+        tb.addWidget(self.model_combo)
         tb.addActions([choose_act, run_act, editor_act])
 
     # ────────────────────────────────────────────────────────────────
@@ -218,6 +240,35 @@ class MainWindow(QMainWindow):
         self._start_macro(folder)
 
     # ────────────────────────────────────────────────────────────────
+    def load_selected_model(self, index: int | None = None, *, initial: bool = False):
+        """Load the chosen blink detection model and its normalisation stats."""
+        use_img = False
+        if self.model_combo is not None:
+            use_img = self.model_combo.currentIndex() == 1
+        self.use_image_model = use_img
+
+        if use_img:
+            self.model = EyeBlinkNet(
+                input_size=Image_Constants.IM_WIDTH * Image_Constants.IM_HEIGHT
+            ).to(self.device).eval()
+            weights = Paths.IMG_WEIGHTS
+            stats_path = Paths.IMG_STATS_NPZ
+        else:
+            self.model = BlinkRatioNet().to(self.device).eval()
+            weights = Paths.NUM_WEIGHTS
+            stats_path = Paths.NUM_STATS_NPZ
+
+        if os.path.exists(weights):
+            self.model.load_state_dict(torch.load(weights, map_location=self.device))
+        if os.path.exists(stats_path):
+            stats = np.load(stats_path)
+            self.mean, self.std = stats["mean"], stats["std"]
+
+        if not initial:
+            self.num_buf.clear()
+            self.prev_pred = 0
+
+    # ────────────────────────────────────────────────────────────────
     # Blink pipeline + UI update
     def update_frame(self):
         ok, frame = self.cap.read()
@@ -227,27 +278,38 @@ class MainWindow(QMainWindow):
         img, faces = self.detector.findFaceMesh(frame, draw=False)
         if faces:
             face = faces[0]
-            # constants
-            L_OUT, L_IN = Image_Constants.LEFT_EYE_OUT_ID, Image_Constants.LEFT_EYE_INSIDE_ID
-            L_UP, L_LO = Image_Constants.LEFT_EYE_UP_ID, Image_Constants.LEFT_EYE_LOW_ID
-            R_OUT, R_IN = Image_Constants.RIGHT_EYE_OUT_ID, Image_Constants.RIGHT_EYE_INSIDE_ID
-            R_UP, R_LO = Image_Constants.RIGHT_EYE_UP_ID, Image_Constants.RIGHT_EYE_LOW_ID
-            L_PAIRS, R_PAIRS = (
-                Image_Constants.LEFT_EYE_PAIR_IDS,
-                Image_Constants.RIGHT_EYE_PAIR_IDS,
-            )
 
-            ratio_L, _, _ = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, self.detector)
-            ratio_R, _, _ = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, self.detector)
-            verts_L, width_L = vertical_ratios(face, L_PAIRS, L_OUT, L_IN, self.detector)
-            verts_R, width_R = vertical_ratios(face, R_PAIRS, R_OUT, R_IN, self.detector)
+            if self.use_image_model:
+                eye = extract_eye_image(frame, face)
+                if eye is None:
+                    self.text_label.setText("No face")
+                    rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    h, w, ch = rgb.shape
+                    qimg = QImage(rgb.data, w, h, ch * w, QImage.Format.Format_RGB888)
+                    self.video_label.setPixmap(QPixmap.fromImage(qimg))
+                    return
+                feats = eye.flatten().astype(np.float32)
+            else:
+                L_OUT, L_IN = Image_Constants.LEFT_EYE_OUT_ID, Image_Constants.LEFT_EYE_INSIDE_ID
+                L_UP, L_LO = Image_Constants.LEFT_EYE_UP_ID, Image_Constants.LEFT_EYE_LOW_ID
+                R_OUT, R_IN = Image_Constants.RIGHT_EYE_OUT_ID, Image_Constants.RIGHT_EYE_INSIDE_ID
+                R_UP, R_LO = Image_Constants.RIGHT_EYE_UP_ID, Image_Constants.RIGHT_EYE_LOW_ID
+                L_PAIRS, R_PAIRS = (
+                    Image_Constants.LEFT_EYE_PAIR_IDS,
+                    Image_Constants.RIGHT_EYE_PAIR_IDS,
+                )
 
-            num_feats = np.array(
-                [ratio_L, ratio_R, *verts_L, *verts_R, width_L, width_R],
-                dtype=np.float32,
-            )
+                ratio_L, _, _ = eye_metrics(face, L_OUT, L_IN, L_UP, L_LO, self.detector)
+                ratio_R, _, _ = eye_metrics(face, R_OUT, R_IN, R_UP, R_LO, self.detector)
+                verts_L, width_L = vertical_ratios(face, L_PAIRS, L_OUT, L_IN, self.detector)
+                verts_R, width_R = vertical_ratios(face, R_PAIRS, R_OUT, R_IN, self.detector)
 
-            self.num_buf.append(num_feats)
+                feats = np.array(
+                    [ratio_L, ratio_R, *verts_L, *verts_R, width_L, width_R],
+                    dtype=np.float32,
+                )
+
+            self.num_buf.append(feats)
             if len(self.num_buf) > self.seq_len:
                 self.num_buf.pop(0)
 

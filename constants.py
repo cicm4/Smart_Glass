@@ -1,8 +1,10 @@
 from pathlib import Path
 
 
-MODEL_WEIGHTS = "blink_best.pth"
-STATS_NPZ = "blink_stats.npz"
+# Default blink detection model (numeric ratios)
+# Updated to new location inside dev/models and dev/stats
+MODEL_WEIGHTS = str(Path("dev/models/blink_num_best.pth"))
+STATS_NPZ = str(Path("dev/stats/blink_num_stats.npz"))
 BLINKING_THREASHOLD = 0.50
 EYE_IMAGE_SIZE = 32  # width for legacy compatibility
 
