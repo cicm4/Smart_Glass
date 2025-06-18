@@ -23,6 +23,10 @@ print("Device =", device)
 if not os.path.exists(CSV_PATH):
     sys.exit(f"\nCSV not found → {CSV_PATH}\nCheck the path or move the file.\n")
 
+    
+os.makedirs(constants.Paths.MODEL_DIR, exist_ok=True)
+os.makedirs(constants.Paths.STATS_DIR, exist_ok=True)
+
 train_ds = EyeSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=True)
 val_ds   = EyeSeqDataset(CSV_PATH, seq_len=SEQ_LEN, train=False, img_stats=train_ds.stats)
 

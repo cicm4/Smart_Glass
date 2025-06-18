@@ -56,3 +56,4 @@ Thumbs.db
 # Logs
 logs/
 *.log
+__pycache__/constants.cpython-311.pyc
