@@ -3,6 +3,9 @@
 data/*.csv
 data/**/*.csv
 
+#video files
+*.mp4
+
 # Python
 __pycache__/
 *.py[cod]
