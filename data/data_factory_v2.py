@@ -16,14 +16,21 @@ import constants
 EYE_W = constants.Image_Constants.IM_WIDTH
 EYE_H = constants.Image_Constants.IM_HEIGHT
 CSV_NAME = f"eye_image_data_{time.strftime('%Y%m%d_%H%M%S')}.csv"
+VIDEO_NAME = f"eye_video_{time.strftime('%Y%m%d_%H%M%S')}.mp4"
+FPS = 20
 
 # Initialize video capture
 cap = cv.VideoCapture(0)
+cap.set(cv.CAP_PROP_FPS, FPS)
 # Fix camera warping
 w = int(cap.get(cv.CAP_PROP_FRAME_WIDTH) / 2)
 h = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT) / 2)
 cap.set(cv.CAP_PROP_FRAME_WIDTH, w)
 cap.set(cv.CAP_PROP_FRAME_HEIGHT, h)
+fourcc = cv.VideoWriter_fourcc(*"mp4v")
+os.makedirs("data", exist_ok=True)
+video_path = os.path.join("data", VIDEO_NAME)
+writer = cv.VideoWriter(video_path, fourcc, FPS, (w, h))
 
 # Left eye landmarks - these will create a bounding box around the eye
 LEFT_EYE_LANDMARKS = constants.Image_Constants.LEFT_EYE_IDS
@@ -76,9 +83,9 @@ try:
         
         # Check for space key press (manual blink annotation)
         key_now = keyboard.is_pressed("space")
-        manual_blink = int(key_now and not prev_key)
-        if manual_blink:
+        if key_now and not prev_key:
             blink_count += 1
+            manual_blink = 1
             cv.putText(
                 img,
                 "Blink detected!",
@@ -89,6 +96,8 @@ try:
                 4,
                 cv.LINE_AA,
             )
+        else:
+            manual_blink = int(key_now)
 
         timestamp = time.time() - t0
 
@@ -120,7 +129,8 @@ try:
                     row[f"pixel_{i}"] = int(pixel_value)
                 
                 data_rows.append(row)
-        
+
+        writer.write(img)
         # Display current frame count and blink count
         cv.putText(
             img,
@@ -155,4 +165,5 @@ finally:
         print(f"CSV shape: {df.shape}")
     
     cap.release()
+    writer.release()
     cv.destroyAllWindows()
