@@ -4,6 +4,7 @@ from pathlib import Path
 MODEL_WEIGHTS = "blink_best.pth"
 STATS_NPZ = "blink_stats.npz"
 BLINKING_THREASHOLD = 0.50
+EYE_IMAGE_SIZE = 50
 
 class Paths:
     ROOT_DIR      = Path(__file__).parent
@@ -97,7 +98,7 @@ class Model_Constants:
     NUM_FEATURES = 16
 
     class RATIO_MODEL_CONSTANTS:
-        FC_SIZES = (64, 64, 32)
+        FC_SIZES = (64, 32, 16)
         LTSM_INPUT_SIZE = FC_SIZES[-1]
         LTSM_HIDDEN = 32
         LTSM_LAYERS = 1
@@ -106,8 +107,8 @@ class Model_Constants:
 
 class Training_Constnats:
     SEQUENCE_LENGTH = 30
-    SPLIT_RATIO = 0.6
+    SPLIT_RATIO = 0.8
     # Path to the training CSV inside the repository
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
     BATCH_SIZE = 32
-    CURRENT_BEST_F1 = 0.416
+    CURRENT_BEST_F1 = 0.591
