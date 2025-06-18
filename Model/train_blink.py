@@ -100,8 +100,8 @@ for epoch in range(1, 101):
     if va_f1 > best_f1 + 1e-3 and va_f1 > CURR_BEST_F1:
         best_f1 = va_f1
         no_improve = 0
-        torch.save(model.state_dict(), "blink_best.pth")
-        np.savez("blink_stats.npz", mean=train_ds.stats[0], std=train_ds.stats[1])
+        torch.save(model.state_dict(), constants.Paths.NUM_WEIGHTS)
+        np.savez(constants.Paths.NUM_STATS_NPZ, mean=train_ds.stats[0], std=train_ds.stats[1])
         print("✓ Saved new best model & stats (F1 ↑)")
     else:
         no_improve += 1
@@ -112,8 +112,8 @@ for epoch in range(1, 101):
 # -------------------------------------------------------------------------
 # ---------- BLOCK 6 : Inference helper ----------------------------------
 # Load best weights (helpful after an early stop during interactive runs)
-if os.path.exists("blink_best.pth"):
-    model.load_state_dict(torch.load("blink_best.pth", map_location=device))
+if os.path.exists(constants.Paths.NUM_WEIGHTS):
+    model.load_state_dict(torch.load(constants.Paths.NUM_WEIGHTS, map_location=device))
     model.eval()
 
 
