@@ -4,7 +4,7 @@ from pathlib import Path
 MODEL_WEIGHTS = "blink_best.pth"
 STATS_NPZ = "blink_stats.npz"
 BLINKING_THREASHOLD = 0.50
-EYE_IMAGE_SIZE = 50
+EYE_IMAGE_SIZE = 32  # width for legacy compatibility
 
 class Paths:
     ROOT_DIR      = Path(__file__).parent
@@ -23,8 +23,8 @@ class Paths:
 # Images:
 class Image_Constants:
 
-    IM_WIDTH = 24
-    IM_HEIGHT = 12
+    IM_WIDTH = 32
+    IM_HEIGHT = 16
 
     LEFT_EYE_OUT_ID, LEFT_EYE_INSIDE_ID, LEFT_EYE_UP_ID, LEFT_EYE_LOW_ID = (
         33,
@@ -104,6 +104,12 @@ class Model_Constants:
         LTSM_LAYERS = 1
         BIDIRECTIONAL = True
 
+    class EYE_MODEL_CONSTANTS:
+        FC_SIZES = (128, 64)
+        LTSM_HIDDEN = 64
+        LTSM_LAYERS = 1
+        BIDIRECTIONAL = True
+
 
 class Training_Constnats:
     SEQUENCE_LENGTH = 30
@@ -112,3 +118,5 @@ class Training_Constnats:
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
     BATCH_SIZE = 32
     CURRENT_BEST_F1 = 0.591
+    IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
+    IMG_CURRENT_BEST_F1 = 0.0
