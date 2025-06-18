@@ -119,4 +119,4 @@ class Training_Constnats:
     BATCH_SIZE = 32
     CURRENT_BEST_F1 = 0.591
     IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
-    IMG_CURRENT_BEST_F1 = 0.0
+    IMG_CURRENT_BEST_F1 = 0.243
