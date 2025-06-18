@@ -112,11 +112,20 @@ class Model_Constants:
 
 
 class Training_Constants:
+    
+    class eye_image_constants:
+        CSV_PATH = str(Paths.DATASET_IMG)
+        BATCH_SIZE = 16
+        LTSM_LAYERS = 1
+        LTSM_HIDDEN = 64
+        BIDIRECTIONAL = True
+        FC_SIZES = (128, 64)
+
     SEQUENCE_LENGTH = 30
-    SPLIT_RATIO = 0.8
+    SPLIT_RATIO = 0.85
     # Path to the training CSV inside the repository
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
-    BATCH_SIZE = 32
+    BATCH_SIZE = 16
     CURRENT_BEST_F1 = 0.591
     IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
-    IMG_CURRENT_BEST_F1 = 0.562
+    IMG_CURRENT_BEST_F1 = 0.577

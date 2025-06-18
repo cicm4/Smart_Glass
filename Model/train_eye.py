@@ -77,7 +77,7 @@ def run_epoch(loader, *, training: bool):
     return loss_sum / len(loader.dataset), acc, prec, rec, f1
 
 
-best_f1, patience, no_improve = 0.0, 30, 0
+best_f1, patience, no_improve = 0.0, 10, 0
 for epoch in range(1, 101):
     tr_loss, _, _, _, tr_f1 = run_epoch(train_dl, training=True)
     va_loss, _, _, _, va_f1 = run_epoch(val_dl, training=False)
