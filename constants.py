@@ -1,9 +1,12 @@
 from pathlib import Path
 
 
-MODEL_WEIGHTS = "blink_best.pth"
-STATS_NPZ = "blink_stats.npz"
+# Default blink detection model (numeric ratios)
+# Updated to new location inside dev/models and dev/stats
+MODEL_WEIGHTS = str(Path("dev/models/blink_num_best.pth"))
+STATS_NPZ = str(Path("dev/stats/blink_num_stats.npz"))
 BLINKING_THREASHOLD = 0.50
+EYE_IMAGE_SIZE = 32  # width for legacy compatibility
 
 class Paths:
     ROOT_DIR      = Path(__file__).parent
@@ -22,8 +25,8 @@ class Paths:
 # Images:
 class Image_Constants:
 
-    IM_WIDTH = 24
-    IM_HEIGHT = 12
+    IM_WIDTH = 32
+    IM_HEIGHT = 16
 
     LEFT_EYE_OUT_ID, LEFT_EYE_INSIDE_ID, LEFT_EYE_UP_ID, LEFT_EYE_LOW_ID = (
         33,
@@ -97,17 +100,34 @@ class Model_Constants:
     NUM_FEATURES = 16
 
     class RATIO_MODEL_CONSTANTS:
-        FC_SIZES = (64, 64, 32)
+        FC_SIZES = (64, 32, 16)
         LTSM_INPUT_SIZE = FC_SIZES[-1]
         LTSM_HIDDEN = 32
         LTSM_LAYERS = 1
         BIDIRECTIONAL = True
 
+    class EYE_MODEL_CONSTANTS:
+        FC_SIZES = (128, 64)
+        LTSM_HIDDEN = 64
+        LTSM_LAYERS = 1
+        BIDIRECTIONAL = True
 
-class Training_Constnats:
+
+class Training_Constants:
+    
+    class eye_image_constants:
+        CSV_PATH = str(Paths.DATASET_IMG)
+        BATCH_SIZE = 16
+        LTSM_LAYERS = 1
+        LTSM_HIDDEN = 64
+        BIDIRECTIONAL = True
+        FC_SIZES = (128, 64)
+
     SEQUENCE_LENGTH = 30
-    SPLIT_RATIO = 0.6
+    SPLIT_RATIO = 0.85
     # Path to the training CSV inside the repository
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
-    BATCH_SIZE = 32
-    CURRENT_BEST_F1 = 0.416
+    BATCH_SIZE = 16
+    CURRENT_BEST_F1 = 0.591
+    IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
+    IMG_CURRENT_BEST_F1 = 0.577

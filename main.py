@@ -9,16 +9,15 @@ from cvzone.FaceMeshModule import FaceMeshDetector
 from cvzone.PlotModule import LivePlot
 
 from constants import (
-    MODEL_WEIGHTS,
-    STATS_NPZ,
+    Paths,
     BLINKING_THREASHOLD,
     Image_Constants,
-    Training_Constnats,
+    Training_Constants,
 )
 from Model.model import BlinkRatioNet as model
 
 # ───────── configuration ──────────────────────────────────────
-SEQ_LEN = Training_Constnats.SEQUENCE_LENGTH
+SEQ_LEN = Training_Constants.SEQUENCE_LENGTH
 
 THRESH = BLINKING_THREASHOLD
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,9 +64,9 @@ def vertical_ratios(face, pairs, out_id, in_id, det):
 
 # ---------- load model & feature stats ------------------------
 model = model().to(DEVICE).eval()
-model.load_state_dict(torch.load(MODEL_WEIGHTS, map_location=DEVICE))
+model.load_state_dict(torch.load(Paths.NUM_WEIGHTS, map_location=DEVICE))
 
-stats = np.load(STATS_NPZ)
+stats = np.load(Paths.NUM_STATS_NPZ)
 MEAN, STD = stats["mean"], stats["std"]
 # --------------------------------------------------------------
 
