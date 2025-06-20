@@ -35,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 # ────── project ───────────────────────────────────────────────────────────
 from Model.model import BlinkRatioNet, EyeBlinkNet
+from collections import deque
 from Macros.deparse import run as run_macro
 from Macros.Starter import MacroModel, MainWindow as MacroEditorWindow
 from constants import (
@@ -124,7 +125,7 @@ class MainWindow(QMainWindow):
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 360)
 
-        self.num_buf: list[np.ndarray] = []
+        self.num_buf = deque(maxlen=self.seq_len)
         self.prev_pred = 0
 
         # ── UI widgets  (left = macro list, right = camera) ──────────
@@ -260,6 +261,7 @@ class MainWindow(QMainWindow):
 
         if os.path.exists(weights):
             self.model.load_state_dict(torch.load(weights, map_location=self.device))
+        self.model = torch.jit.script(self.model)
         if os.path.exists(stats_path):
             stats = np.load(stats_path)
             self.mean, self.std = stats["mean"], stats["std"]
@@ -310,13 +312,11 @@ class MainWindow(QMainWindow):
                 )
 
             self.num_buf.append(feats)
-            if len(self.num_buf) > self.seq_len:
-                self.num_buf.pop(0)
 
             if len(self.num_buf) == self.seq_len:
                 arr = (np.stack(self.num_buf) - self.mean) / self.std
                 t = torch.from_numpy(arr)[None].to(self.device)
-                with torch.no_grad():
+                with torch.inference_mode():
                     p = torch.sigmoid(self.model(t)).item()
 
                 pred = int(p > BLINKING_THREASHOLD)
