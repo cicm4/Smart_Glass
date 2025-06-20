@@ -128,7 +128,7 @@ def predict_sequence(num_seq_np: np.ndarray) -> float:
 
     num = torch.from_numpy(num_seq_np).unsqueeze(0).to(device)
 
-    with torch.no_grad(), autocast(device_type = device):
+    with torch.inference_mode(), autocast(device_type = device):
         prob = torch.sigmoid(model(num)).item()
     return prob
 

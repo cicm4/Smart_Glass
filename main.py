@@ -5,6 +5,7 @@ import cv2 as cv
 import cvzone as cvz
 import numpy as np
 import torch
+from collections import deque
 from cvzone.FaceMeshModule import FaceMeshDetector
 from cvzone.PlotModule import LivePlot
 
@@ -63,15 +64,16 @@ def vertical_ratios(face, pairs, out_id, in_id, det):
 # --------------------------------------------------------------
 
 # ---------- load model & feature stats ------------------------
-model = model().to(DEVICE).eval()
+model = model().to(DEVICE)
 model.load_state_dict(torch.load(Paths.NUM_WEIGHTS, map_location=DEVICE))
+model = torch.jit.script(model.eval())
 
 stats = np.load(Paths.NUM_STATS_NPZ)
 MEAN, STD = stats["mean"], stats["std"]
 # --------------------------------------------------------------
 
 # ---------- runtime buffers -----------------------------------
-num_buf = []  # hold SEQ_LEN frames
+num_buf = deque(maxlen=SEQ_LEN)
 blink_count = 0
 prev_pred = 0
 # --------------------------------------------------------------
@@ -119,15 +121,13 @@ while True:
         )
 
         num_buf.append(num_feats)
-        if len(num_buf) > SEQ_LEN:
-            num_buf.pop(0)
 
         # run model when window full
         if len(num_buf) == SEQ_LEN:
             num_arr = (np.stack(num_buf) - MEAN) / STD
             num_t = torch.from_numpy(num_arr)[None].to(DEVICE)
 
-            with torch.no_grad():
+            with torch.inference_mode():
                 p = torch.sigmoid(model(num_t)).item()
 
             pred = int(p > THRESH)

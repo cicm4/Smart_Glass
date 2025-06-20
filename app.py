@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 
 # ────── project ───────────────────────────────────────────────────────
 from Model.model import EyeBlinkNet
+from collections import deque
 from Macros.deparse import run as run_macro
 from Macros.Starter import MacroModel, MainWindow as MacroEditorWindow
 from constants import Paths, Image_Constants, Training_Constants
@@ -50,7 +51,7 @@ def set_resolution(url: str, index: int = 0) -> None:
     """Configure ESP32 camera resolution."""
 
     try:
-        requests.get(f"{url}/control?var=framesize&val={index}", timeout=2)
+        requests.get(f"{url}/control?var=framesize&val={index}", timeout=1)
     except Exception:
         pass
 
@@ -59,7 +60,7 @@ def set_quality(url: str, value: int = 20) -> None:
     """Configure ESP32 JPEG quality."""
 
     try:
-        requests.get(f"{url}/control?var=quality&val={value}", timeout=2)
+        requests.get(f"{url}/control?var=quality&val={value}", timeout=1)
     except Exception:
         pass
 
@@ -83,6 +84,28 @@ class MacroRunnerThread(QThread):
             self.error.emit(self.folder, str(ex))
 
 
+# ────── background frame grabber -------------------------------------
+class FrameGrabberThread(QThread):
+    """Continuously grab frames without blocking the UI."""
+
+    new_frame = Signal(np.ndarray)
+
+    def __init__(self, cap: cv2.VideoCapture) -> None:
+        super().__init__()
+        self.cap = cap
+        self._running = True
+
+    def run(self) -> None:  # pragma: no cover - UI side effect
+        while self._running:
+            ok, frame = self.cap.read()
+            if ok:
+                self.new_frame.emit(frame)
+            self.msleep(1)
+
+    def stop(self) -> None:
+        self._running = False
+
+
 # ────── main window ----------------------------------------------------
 class MainWindow(QMainWindow):
     """Application window with live preview and blink to macro mapping."""
@@ -96,13 +119,15 @@ class MainWindow(QMainWindow):
         # Camera setup -------------------------------------------------
         set_resolution(url, 0)  # 160×120
         set_quality(url, 20)
-        self.cap = cv2.VideoCapture(f"{url}:81/stream")
+        self.cap = cv2.VideoCapture(f"{url}:81/stream", cv2.CAP_FFMPEG)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         if not self.cap.isOpened():
             raise SystemExit("Could not open MJPEG stream. Check Wi-Fi & URL.")
 
         ok, frame = self.cap.read()
         if not ok:
             raise SystemExit("No frame received from camera.")
+        self.latest_frame = frame
         h0, w0 = frame.shape[:2]
         src_w, src_h = 96, 48
         cx = 0.5
@@ -113,15 +138,21 @@ class MainWindow(QMainWindow):
         self.oy = max(0, min(oy, h0 - src_h))
         self.src_w, self.src_h = src_w, src_h
 
+        # start frame grabber
+        self.grabber = FrameGrabberThread(self.cap)
+        self.grabber.new_frame.connect(lambda f: setattr(self, "latest_frame", f))
+        self.grabber.start()
+
         # ML -----------------------------------------------------------
         self.seq_len = Training_Constants.SEQUENCE_LENGTH
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self.model = EyeBlinkNet(
             input_size=Image_Constants.IM_WIDTH * Image_Constants.IM_HEIGHT
-        ).to(self.device).eval()
+        ).to(self.device)
 
         if Paths.IMG_WEIGHTS.exists():
             self.model.load_state_dict(torch.load(Paths.IMG_WEIGHTS, map_location=self.device))
+        self.model = torch.jit.script(self.model.eval())
         if Paths.IMG_STATS_NPZ.exists():
             stats = np.load(Paths.IMG_STATS_NPZ)
             self.mean, self.std = stats["mean"], stats["std"]
@@ -129,8 +160,10 @@ class MainWindow(QMainWindow):
             size = Image_Constants.IM_WIDTH * Image_Constants.IM_HEIGHT
             self.mean = np.zeros((self.seq_len, size), dtype=np.float32)
             self.std = np.ones_like(self.mean)
+        self.mean_t = torch.from_numpy(self.mean).to(self.device)
+        self.std_t = torch.from_numpy(self.std).to(self.device)
 
-        self.img_buf: list[np.ndarray] = []
+        self.img_buf = deque(maxlen=self.seq_len)
         self.prev_pred = 0
 
         # UI widgets ---------------------------------------------------
@@ -230,8 +263,8 @@ class MainWindow(QMainWindow):
 
     # -----------------------------------------------------------------
     def update_frame(self) -> None:
-        ok, frame = self.cap.read()
-        if not ok:
+        frame = getattr(self, "latest_frame", None)
+        if frame is None:
             return
 
         roi = frame[self.oy : self.oy + self.src_h, self.ox : self.ox + self.src_w]
@@ -247,13 +280,13 @@ class MainWindow(QMainWindow):
 
         feats = eye.flatten().astype(np.float32)
         self.img_buf.append(feats)
-        if len(self.img_buf) > self.seq_len:
-            self.img_buf.pop(0)
 
         if len(self.img_buf) == self.seq_len:
-            arr = (np.stack(self.img_buf) - self.mean) / self.std
-            t = torch.from_numpy(arr)[None].to(self.device)
-            with torch.no_grad():
+            arr = np.stack(self.img_buf)
+            t = torch.from_numpy(arr).to(self.device)
+            t = (t - self.mean_t) / self.std_t
+            t = t[None]
+            with torch.inference_mode():
                 p = torch.sigmoid(self.model(t)).item()
 
             pred = int(p > self.THRESH)
@@ -263,8 +296,8 @@ class MainWindow(QMainWindow):
             self.text_label.setText("Blink" if pred else "No blink")
 
         rgb = cv2.cvtColor(roi, cv2.COLOR_BGR2RGB)
-        h, w = rgb.shape[:2]
-        qimg = QImage(rgb.data, w, h, 3 * w, QImage.Format.Format_RGB888)
+        h, w, ch = rgb.shape
+        qimg = QImage(rgb.data, w, h, rgb.strides[0], QImage.Format.Format_RGB888)
         self.video_label.setPixmap(QPixmap.fromImage(qimg))
 
     # -----------------------------------------------------------------
@@ -275,6 +308,8 @@ class MainWindow(QMainWindow):
         self.editor.show()
 
     def closeEvent(self, ev) -> None:  # pragma: no cover - UI hook
+        self.grabber.stop()
+        self.grabber.wait()
         self.cap.release()
         super().closeEvent(ev)
 

@@ -104,6 +104,6 @@ if os.path.exists(constants.Paths.IMG_WEIGHTS):
 def predict_sequence(img_seq_np: np.ndarray) -> float:
     assert img_seq_np.shape[0] == SEQ_LEN, "wrong seq len"
     img = torch.from_numpy(img_seq_np).unsqueeze(0).to(device)
-    with torch.no_grad(), autocast(device_type=device):
+    with torch.inference_mode(), autocast(device_type=device):
         prob = torch.sigmoid(model(img)).item()
     return prob
