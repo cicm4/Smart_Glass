@@ -128,6 +128,6 @@ class Training_Constants:
     # Path to the training CSV inside the repository
     CSV_PATH = str(Paths.ROOT_DIR / "dev" / "blinkdata.csv")
     BATCH_SIZE = 16
-    CURRENT_BEST_F1 = 0.591 #0.8 during static testing (testing with dataset of head on perspective)
+    CURRENT_BEST_F1 = 0.591 #~0.8 to 0.675 during front angle testing (testing with dataset of head on perspective).
     IMG_CSV_PATH = str(Paths.DATA_DIR / "eye_image_data.csv")
     IMG_CURRENT_BEST_F1 = 0.577
